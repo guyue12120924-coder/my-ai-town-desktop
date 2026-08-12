@@ -1,23 +1,4 @@
 {
   "version": 1,
-  "residents": {
-    "example_cold_doctor": {
-      "name": "林医生",
-      "personality": "冷静、理性、克制，不喜欢无意义闲聊",
-      "background": "曾在城市医院工作，后来来到小镇诊所",
-      "goals": "维护诊所运行，帮助需要医疗帮助的人",
-      "speaking_style": "简短、专业、偶尔带有温和关心",
-      "behavior_rules": "优先处理医疗相关问题，不轻易表达情绪",
-      "long_term_memory": "暂无"
-    },
-    "example_warm_neighbor": {
-      "name": "小夏",
-      "personality": "热情、外向、喜欢帮助别人",
-      "background": "从小生活在小镇，熟悉居民之间的关系",
-      "goals": "维持社区关系，让邻里更加亲近",
-      "speaking_style": "轻松、主动、喜欢询问他人近况",
-      "behavior_rules": "遇到需要帮助的人会主动提供支持",
-      "long_term_memory": "暂无"
-    }
-  }
+  "residents": {}
 }
