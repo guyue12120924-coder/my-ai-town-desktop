@@ -22,6 +22,14 @@ VERSION_PATTERN = re.compile(
     r"(?:-(?P<channel>alpha|beta|rc)\.(?P<number>[1-9]\d*))?$"
 )
 PLATFORMS = ("windows", "macos")
+WINDOWS_DESKTOP_RUNTIME_FILES = (
+    "node/node.exe",
+    "desktop_bridge/server.mjs",
+    "vendor/unlimited-ai-first/src/context.js",
+    "vendor/unlimited-ai-first/LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "package.json",
+)
 
 
 class ReleaseError(RuntimeError):
@@ -284,6 +292,16 @@ def verify_archive(archive_path: Path, platform: str, expected_version: str) -> 
             )
             if not has_executable or not has_pck:
                 raise ReleaseError("Windows 发行包必须同时包含 .exe 和 .pck。")
+            runtime_missing = {
+                f"{root}/{relative_path}"
+                for relative_path in WINDOWS_DESKTOP_RUNTIME_FILES
+                if f"{root}/{relative_path}" not in names
+            }
+            if runtime_missing:
+                raise ReleaseError(
+                    "Windows 发行包缺少桌面上下文运行时："
+                    + ", ".join(sorted(runtime_missing))
+                )
         else:
             has_app_binary = any(
                 name.startswith(f"{root}/") and ".app/Contents/MacOS/" in name

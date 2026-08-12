@@ -9,6 +9,9 @@ const AlibabaBailianModelProviderScript := preload("res://agent/model/AlibabaBai
 const KimiModelProviderScript := preload("res://agent/model/KimiModelProvider.gd")
 const ZhipuGLMModelProviderScript := preload("res://agent/model/ZhipuGLMModelProvider.gd")
 const XiaomiMiMoModelProviderScript := preload("res://agent/model/XiaomiMiMoModelProvider.gd")
+const SiliconFlowDesktopModelProviderScript := preload(
+	"res://agent/model/SiliconFlowDesktopModelProvider.gd"
+)
 const GenericOpenAICompatibleModelProviderScript := preload(
 	"res://agent/model/GenericOpenAICompatibleModelProvider.gd"
 )
@@ -40,6 +43,10 @@ func _init(include_defaults := true) -> void:
 	_register_provider_with_models(KimiModelProviderScript, _create_kimi)
 	_register_provider_with_models(ZhipuGLMModelProviderScript, _create_zhipu_glm)
 	_register_provider_with_models(XiaomiMiMoModelProviderScript, _create_xiaomi_mimo)
+	_register_provider_with_models(
+		SiliconFlowDesktopModelProviderScript,
+		_create_siliconflow,
+	)
 	_register_provider_with_models(
 		GenericOpenAICompatibleModelProviderScript,
 		_create_openai_compatible,
@@ -406,6 +413,10 @@ func _create_zhipu_glm(request_host: Node, config: Dictionary) -> RefCounted:
 
 func _create_xiaomi_mimo(request_host: Node, config: Dictionary) -> RefCounted:
 	return XiaomiMiMoModelProviderScript.new(request_host, null, config)
+
+
+func _create_siliconflow(request_host: Node, config: Dictionary) -> RefCounted:
+	return SiliconFlowDesktopModelProviderScript.new(request_host, null, config)
 
 
 func _create_kimi(request_host: Node, config: Dictionary) -> RefCounted:

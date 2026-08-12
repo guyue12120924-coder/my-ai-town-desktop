@@ -118,6 +118,10 @@ class ReleaseToolTest(unittest.TestCase):
             export.mkdir(parents=True)
             (export / "my-ai-town.exe").write_bytes(b"exe")
             (export / "my-ai-town.pck").write_bytes(b"pck")
+            for relative_path in release_tool.WINDOWS_DESKTOP_RUNTIME_FILES:
+                runtime_file = export / relative_path
+                runtime_file.parent.mkdir(parents=True, exist_ok=True)
+                runtime_file.write_bytes(b"runtime")
             output = root / "dist/windows.zip"
             release_tool.package_release(root, "windows", export, output)
             release_tool.verify_archive(output, "windows", "0.1.0-beta.1")
@@ -125,6 +129,7 @@ class ReleaseToolTest(unittest.TestCase):
                 names = archive.namelist()
             self.assertTrue(any(name.endswith("/更新日志.md") for name in names))
             self.assertTrue(any(name.endswith("/build-info.json") for name in names))
+            self.assertTrue(any(name.endswith("/desktop_bridge/server.mjs") for name in names))
 
     def test_macos_package_preserves_executable_mode(self) -> None:
         with tempfile.TemporaryDirectory() as raw_temp:

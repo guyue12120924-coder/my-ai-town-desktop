@@ -113,6 +113,8 @@ func request_decision(model_request: Dictionary, on_complete: Callable) -> void:
 		"Content-Type: application/json",
 		"Accept: application/json",
 	])
+	for provider_header: String in _provider_request_headers():
+		headers.append(provider_header)
 	if not api_key.is_empty():
 		headers.append("Authorization: Bearer %s" % api_key)
 	var started_at := Time.get_ticks_msec()
@@ -168,6 +170,10 @@ func _build_request_body(model_request: Dictionary) -> Dictionary:
 	for key: Variant in provider_options:
 		body[key] = provider_options[key]
 	return body
+
+
+func _provider_request_headers() -> PackedStringArray:
+	return PackedStringArray()
 
 
 func _validate_model_request(model_request: Dictionary) -> Array[String]:

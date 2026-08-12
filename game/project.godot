@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="我的ai小镇"
+config/name="我的 AI 小镇 · 硅基流动桌面版"
 run/main_scene="res://ui/startup/StartupScreen.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.png"
@@ -19,6 +19,7 @@ config/icon="res://icon.png"
 
 TownAudioController="*res://audio/TownAudioController.gd"
 GameFlowHost="*res://world/presentation/game_flow/GameFlowHost.gd"
+SiliconFlowDesktopBridge="*res://desktop/SiliconFlowDesktopBridge.gd"
 
 [display]
 

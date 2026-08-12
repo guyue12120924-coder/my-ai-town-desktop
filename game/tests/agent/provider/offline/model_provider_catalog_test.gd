@@ -36,6 +36,7 @@ func _initialize() -> void:
 			"kimi",
 			"zhipu-glm",
 			"xiaomi-mimo",
+			"siliconflow",
 			"openai-compatible",
 			"302-ai",
 			"ollama",
@@ -97,6 +98,11 @@ func _initialize() -> void:
 		["mimo-v2.5-pro", "mimo-v2.5"],
 		"Xiaomi exposes the current MiMo V2.5 chat models",
 	)
+	_expect_equal(
+		_model_ids(catalog, "siliconflow"),
+		["custom"],
+		"SiliconFlow discovers the current account model catalog at runtime",
+	)
 	_expect_equal(_model_ids(catalog, "openai-compatible"), ["custom"], "generic OpenAI compatibility has one custom model entry")
 	_expect_equal(_model_ids(catalog, "302-ai"), ["custom"], "302.AI accepts player model ids")
 	_expect_equal(_model_ids(catalog, "ollama"), ["custom"], "Ollama accepts local model ids")
@@ -131,6 +137,16 @@ func _initialize() -> void:
 		catalog.call("descriptor", "lm-studio").get("auth_required"),
 		false,
 		"LM Studio does not require a placeholder API key",
+	)
+	_expect_equal(
+		catalog.call("descriptor", "siliconflow").get("default_endpoint"),
+		"http://127.0.0.1:19841/v1",
+		"SiliconFlow is routed through the desktop context bridge",
+	)
+	_expect_equal(
+		catalog.call("descriptor", "siliconflow").get("auth_required"),
+		true,
+		"SiliconFlow requires the player's API key",
 	)
 	_expect_equal(catalog.call("default_model_id"), "deepseek-v4-flash", "DeepSeek remains the global default")
 	_expect_equal(catalog.call("default_model_id", "minimax"), "MiniMax-M2.7", "MiniMax defaults to M2.7")

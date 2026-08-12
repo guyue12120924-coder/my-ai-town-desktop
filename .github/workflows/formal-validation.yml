@@ -24,6 +24,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: 运行守卫
         run: tools/guards/run_guards.sh
 
@@ -32,6 +34,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y zsh ripgrep unzip
@@ -55,6 +59,9 @@ jobs:
 
       - name: Add Godot to PATH
         run: echo "$HOME/godot-bin" >> "$GITHUB_PATH"
+
+      - name: Desktop context bridge tests
+        run: npm test
 
       - name: Cache Godot import artifacts
         uses: actions/cache@v4

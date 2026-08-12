@@ -95,6 +95,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.validate.outputs.commit }}
+          submodules: recursive
 
       - name: Cache Godot binary and export templates
         id: godot-cache
@@ -170,6 +171,37 @@ jobs:
             grep -nE '^ERROR:|SCRIPT ERROR:|Parse Error:|Failed to load script' /tmp/godot-export.log | head -20
             exit 1
           fi
+
+      - name: 组装硅基流动 Windows 桌面运行时
+        if: matrix.platform == 'windows'
+        env:
+          NODE_VERSION: "24.14.0"
+        run: |
+          curl --fail --retry 3 -sSL -o "/tmp/node-v${NODE_VERSION}-win-x64.zip" \
+            "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip"
+          curl --fail --retry 3 -sSL -o /tmp/node-shasums.txt \
+            "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"
+          grep " node-v${NODE_VERSION}-win-x64.zip$" /tmp/node-shasums.txt \
+            | sed 's#  node-#  /tmp/node-#' > /tmp/node-windows.sha256
+          sha256sum --check /tmp/node-windows.sha256
+          unzip -q "/tmp/node-v${NODE_VERSION}-win-x64.zip" -d /tmp/node-windows
+
+          mkdir -p \
+            build/windows/node \
+            build/windows/desktop_bridge \
+            build/windows/vendor/unlimited-ai-first/src
+          cp "/tmp/node-windows/node-v${NODE_VERSION}-win-x64/node.exe" \
+            build/windows/node/node.exe
+          cp desktop_bridge/server.mjs build/windows/desktop_bridge/server.mjs
+          cp vendor/unlimited-ai-first/src/context.js \
+            build/windows/vendor/unlimited-ai-first/src/context.js
+          cp vendor/unlimited-ai-first/LICENSE \
+            build/windows/vendor/unlimited-ai-first/LICENSE
+          cp vendor/unlimited-ai-first/README.md \
+            build/windows/vendor/unlimited-ai-first/README.md
+          cp README.md build/windows/README.md
+          cp THIRD_PARTY_NOTICES.md build/windows/THIRD_PARTY_NOTICES.md
+          cp package.json build/windows/package.json
 
       - name: 组装并复查玩家下载包
         env:

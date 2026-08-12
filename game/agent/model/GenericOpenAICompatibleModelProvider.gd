@@ -124,6 +124,8 @@ func request_model_catalog(on_complete: Callable) -> Dictionary:
 	var headers := PackedStringArray([
 		"Accept: application/json",
 	])
+	for provider_header: String in _provider_request_headers():
+		headers.append(provider_header)
 	if not api_key.is_empty():
 		headers.append("Authorization: Bearer %s" % api_key)
 	if _transport != null and _transport.has_method("request_model_catalog"):
