@@ -38,8 +38,10 @@ const PROVIDER_DISPLAY_NAMES := {
 	"ollama": "Ollama（本地）",
 	"ollama-cloud": "Ollama Cloud",
 	"openai-compatible": "其他兼容接口",
+	"siliconflow": "硅基流动",
 	"zhipu-glm": "智谱",
 }
+const UNLIMITED_PROMPT_MAX_LENGTH := 12000
 const MODEL_CAPABILITIES := {
 	"deepseek-v4-flash": [
 		"decision_json",
@@ -343,6 +345,8 @@ func dispatch(intent: Variant, payload: Dictionary = {}) -> Dictionary:
 			result = _discover_models(payload, request_id)
 		"provider_settings.set_enabled":
 			result = _set_enabled(payload)
+		"provider_settings.save_unlimited_mode":
+			result = _save_unlimited_mode(payload)
 		"provider_settings.select_model":
 			result = _select_model(payload)
 		"provider_settings.back":
@@ -558,6 +562,38 @@ func _load_public_snapshot() -> Dictionary:
 			"defaultBaseUrl": String(source.get("defaultBaseUrl", "")),
 			"apiModel": selected_model_id if custom_models else "",
 			"apiModels": api_models,
+			"unlimitedMode": {
+				"supported": provider_id == "siliconflow",
+				"enabled": bool(stored_provider.get(
+					"unlimitedModeEnabled",
+					false,
+				)),
+				"personaMode": String(stored_provider.get(
+					"unlimitedPersonaMode",
+					"builtin",
+				)),
+				"customPrompt": String(stored_provider.get(
+					"unlimitedCustomPrompt",
+					"",
+				)),
+				"runtimePrompt": String(stored_provider.get(
+					"unlimitedRuntimePrompt",
+					"",
+				)),
+				"modelFallback": bool(stored_provider.get(
+					"unlimitedModelFallback",
+					true,
+				)),
+				"memoryExtraction": bool(stored_provider.get(
+					"unlimitedMemoryExtraction",
+					true,
+				)),
+				"continuityAnalysis": bool(stored_provider.get(
+					"unlimitedContinuityAnalysis",
+					true,
+				)),
+				"contextIntegration": true,
+			},
 			"models": (
 				models_by_provider.get(provider_id, []) as Array
 			).duplicate(true),
@@ -1396,6 +1432,68 @@ func _set_enabled(payload: Dictionary) -> Dictionary:
 	)
 
 
+func _save_unlimited_mode(payload: Dictionary) -> Dictionary:
+	var provider_result := _required_canonical_id(payload, "providerId")
+	if not bool(provider_result.get("ok", false)):
+		return _failure("PROVIDER_SETTINGS_PROVIDER_REQUIRED", false)
+	var provider_id := String(provider_result.get("value", ""))
+	if provider_id != "siliconflow":
+		return _failure("PROVIDER_UNLIMITED_MODE_UNSUPPORTED", false)
+	if _provider_from_confirmed(provider_id).is_empty():
+		return _failure("PROVIDER_SETTINGS_PROVIDER_UNKNOWN", false)
+	var enabled_value: Variant = payload.get("enabled")
+	var persona_value: Variant = payload.get("personaMode")
+	var custom_prompt_value: Variant = payload.get("customPrompt")
+	var runtime_prompt_value: Variant = payload.get("runtimePrompt")
+	var fallback_value: Variant = payload.get("modelFallback")
+	var extraction_value: Variant = payload.get("memoryExtraction")
+	var continuity_value: Variant = payload.get("continuityAnalysis")
+	if (
+		typeof(enabled_value) != TYPE_BOOL
+		or typeof(persona_value) != TYPE_STRING
+		or persona_value not in ["builtin", "custom"]
+		or typeof(custom_prompt_value) != TYPE_STRING
+		or typeof(runtime_prompt_value) != TYPE_STRING
+		or typeof(fallback_value) != TYPE_BOOL
+		or typeof(extraction_value) != TYPE_BOOL
+		or typeof(continuity_value) != TYPE_BOOL
+	):
+		return _failure("PROVIDER_UNLIMITED_MODE_INVALID", false)
+	var custom_prompt := custom_prompt_value as String
+	var runtime_prompt := runtime_prompt_value as String
+	if (
+		not _prompt_text_is_valid(custom_prompt)
+		or not _prompt_text_is_valid(runtime_prompt)
+	):
+		return _failure("PROVIDER_UNLIMITED_MODE_INVALID", false)
+	if persona_value == "custom" and custom_prompt.strip_edges().is_empty():
+		return _failure(
+			"PROVIDER_UNLIMITED_CUSTOM_PROMPT_REQUIRED",
+			false,
+			"选择 😇 自定义人物模式时，请填写人物 Prompt。",
+		)
+	var candidate := _stored_config.duplicate(true)
+	var providers := candidate.get("providers", {}) as Dictionary
+	var provider := (providers.get(provider_id, {}) as Dictionary).duplicate(true)
+	provider["unlimitedModeEnabled"] = enabled_value as bool
+	provider["unlimitedPersonaMode"] = persona_value as String
+	provider["unlimitedCustomPrompt"] = custom_prompt
+	provider["unlimitedRuntimePrompt"] = runtime_prompt
+	provider["unlimitedModelFallback"] = fallback_value as bool
+	provider["unlimitedMemoryExtraction"] = extraction_value as bool
+	provider["unlimitedContinuityAnalysis"] = continuity_value as bool
+	providers[provider_id] = provider
+	candidate["providers"] = providers
+	return _persist_candidate_reconfigure_and_reload(
+		candidate,
+		(
+			"Unlimited AI 增强模式已启用。"
+			if bool(enabled_value)
+			else "已切换回普通 AI Town 模式。"
+		),
+	)
+
+
 func _select_model(payload: Dictionary) -> Dictionary:
 	var provider_result := _required_canonical_id(payload, "providerId")
 	var model_result := _required_canonical_id(payload, "modelId")
@@ -1745,6 +1843,35 @@ func _provider_configs_for_runtime() -> Dictionary:
 		).strip_edges()
 		if selected_model in api_models:
 			config["api_model"] = selected_model
+		if provider_id == "siliconflow":
+			config["unlimited_mode_enabled"] = bool(source.get(
+				"unlimitedModeEnabled",
+				false,
+			))
+			config["unlimited_persona_mode"] = String(source.get(
+				"unlimitedPersonaMode",
+				"builtin",
+			))
+			config["unlimited_custom_prompt"] = String(source.get(
+				"unlimitedCustomPrompt",
+				"",
+			))
+			config["unlimited_runtime_prompt"] = String(source.get(
+				"unlimitedRuntimePrompt",
+				"",
+			))
+			config["unlimited_model_fallback"] = bool(source.get(
+				"unlimitedModelFallback",
+				true,
+			))
+			config["unlimited_memory_extraction"] = bool(source.get(
+				"unlimitedMemoryExtraction",
+				true,
+			))
+			config["unlimited_continuity_analysis"] = bool(source.get(
+				"unlimitedContinuityAnalysis",
+				true,
+			))
 		result[provider_id] = config
 	return result
 
@@ -1979,6 +2106,10 @@ func _actions(data: Dictionary) -> Dictionary:
 		"back": _action("provider_settings.back", false, HOST_ROUTING_REQUIRED),
 		"selectProvider": _action("provider_settings.select_provider", has_providers),
 		"setProviderEnabled": _action("provider_settings.set_enabled", has_providers),
+		"saveUnlimitedMode": _action(
+			"provider_settings.save_unlimited_mode",
+			has_providers,
+		),
 		"saveKey": _action("provider_settings.save_key", has_providers),
 		"deleteKey": _action("provider_settings.delete_key", has_providers),
 		"saveBaseUrl": _action("provider_settings.save_base_url", has_providers),
@@ -2090,6 +2221,16 @@ func _required_canonical_id(payload: Dictionary, key: String) -> Dictionary:
 
 func _canonical_id_is_valid(value: String) -> bool:
 	return not value.is_empty() and value == value.strip_edges()
+
+
+func _prompt_text_is_valid(prompt: String) -> bool:
+	if prompt.length() > UNLIMITED_PROMPT_MAX_LENGTH:
+		return false
+	for character: String in prompt:
+		var codepoint := character.unicode_at(0)
+		if (codepoint < 32 and character not in ["\n", "\r", "\t"]) or codepoint == 127:
+			return false
+	return true
 
 
 func _is_dynamic_compatible_profile(

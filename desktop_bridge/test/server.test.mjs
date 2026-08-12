@@ -80,6 +80,7 @@ test("uses the unmodified unlimited-ai-first builder for resident continuity con
 test("enriches only resident decisions", () => {
   const residentMessages = enrichMessages(residentPayload());
   assert.match(residentMessages[0].content, /character_intelligence_context/);
+  assert.doesNotMatch(residentMessages[0].content, /unlimited_ai_persona/);
 
   const organizationPayload = {
     ...residentPayload(),
@@ -87,6 +88,45 @@ test("enriches only resident decisions", () => {
   };
   const organizationMessages = enrichMessages(organizationPayload);
   assert.equal(organizationMessages[0].content, "你是小镇居民。");
+});
+
+test("unlimited mode adds the original persona, runtime contract, memory extraction, and continuity analysis", () => {
+  const builtinPayload = {
+    ...residentPayload(),
+    unlimited_mode: true,
+    unlimited_persona_mode: "builtin"
+  };
+  const builtinMessages = enrichMessages(builtinPayload);
+  assert.match(builtinMessages[0].content, /unlimited_ai_persona/);
+  assert.match(builtinMessages[0].content, /You are Unlimited AI/);
+  assert.match(builtinMessages[0].content, /unlimited_ai_runtime/);
+  assert.match(builtinMessages[0].content, /AI Town 居民决策适配约束/);
+  assert.match(builtinMessages[0].content, /character_intelligence_context/);
+
+  const customMessages = enrichMessages({
+    ...builtinPayload,
+    unlimited_persona_mode: "custom",
+    unlimited_custom_prompt: "你是一个严格依据人物卡行动的小镇居民。",
+    unlimited_runtime_prompt: "保持角色主动性，但必须返回决定 JSON。"
+  });
+  assert.match(customMessages[0].content, /严格依据人物卡/);
+  assert.match(customMessages[0].content, /保持角色主动性/);
+  assert.doesNotMatch(customMessages[0].content, /long-form fiction writing partner/);
+
+  const maximumPromptMessages = enrichMessages({
+    ...builtinPayload,
+    unlimited_persona_mode: "custom",
+    unlimited_custom_prompt: "居".repeat(12_000)
+  });
+  assert.match(maximumPromptMessages[0].content, /<\/unlimited_ai_persona>/);
+
+  const memoryMessages = enrichMessages({
+    ...builtinPayload,
+    request_kind: "memory_organization"
+  });
+  assert.match(memoryMessages[0].content, /unlimited_memory_extraction/);
+  assert.match(memoryMessages[0].content, /unlimited_continuity_analysis/);
+  assert.doesNotMatch(memoryMessages[0].content, /character_intelligence_context/);
 });
 
 test("forwards a bounded enriched request only to the fixed SiliconFlow chat URL", async () => {
@@ -154,6 +194,53 @@ test("proxies model discovery and rejects unauthenticated requests", async () =>
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, SILICONFLOW_MODELS_URL);
+});
+
+test("unlimited mode falls back through configured SiliconFlow models", async () => {
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push({ url, body });
+    if (calls.length === 1) {
+      return new Response(JSON.stringify({ error: { message: "busy" } }), {
+        status: 429,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: "{\"handling\":\"continue_current\"}" } }]
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  await withServer(fetchImpl, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer test-key",
+        "Content-Type": "application/json",
+        "X-AI-Town-Bridge-Token": BRIDGE_TOKEN
+      },
+      body: JSON.stringify({
+        ...residentPayload(),
+        unlimited_mode: true,
+        unlimited_model_fallback: true,
+        fallback_models: [
+          "Pro/zai-org/GLM-4.7",
+          "deepseek-ai/DeepSeek-V3.2"
+        ]
+      })
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("x-requested-model"), "Pro/zai-org/GLM-4.7");
+    assert.equal(response.headers.get("x-model-used"), "deepseek-ai/DeepSeek-V3.2");
+    assert.match(response.headers.get("x-model-fallback"), /HTTP 429/);
+  });
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, SILICONFLOW_CHAT_URL);
+  assert.equal(calls[0].body.model, "Pro/zai-org/GLM-4.7");
+  assert.equal(calls[1].body.model, "deepseek-ai/DeepSeek-V3.2");
+  assert.equal(calls[1].body.fallback_models, undefined);
 });
 
 test("rejects invalid models before any upstream request", async () => {

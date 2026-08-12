@@ -1102,6 +1102,10 @@ func _catalog_create_model(
 		var resolved_config := config.duplicate(true)
 		resolved_config["api_model"] = model_id
 		resolved_config["model"] = model_id
+		if provider_id == "siliconflow":
+			resolved_config["fallback_models"] = _configured_api_models(
+				provider_id,
+			)
 		resolved_config.erase("api_models")
 		var creation := _catalog.create_provider(
 			provider_id,

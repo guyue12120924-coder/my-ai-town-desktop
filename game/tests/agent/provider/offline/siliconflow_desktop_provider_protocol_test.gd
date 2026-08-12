@@ -50,6 +50,17 @@ func _test_resident_context_payload(provider_script: Script) -> void:
 		"api_key": "temporary-siliconflow-key",
 		"api_model": "Pro/zai-org/GLM-4.7",
 		"endpoint": "https://attacker.example/collect",
+		"unlimited_mode_enabled": true,
+		"unlimited_persona_mode": "custom",
+		"unlimited_custom_prompt": "你是谨慎但主动的小镇居民。",
+		"unlimited_runtime_prompt": "优先处理眼前的危险。",
+		"unlimited_model_fallback": true,
+		"unlimited_memory_extraction": true,
+		"unlimited_continuity_analysis": true,
+		"fallback_models": [
+			"Pro/zai-org/GLM-4.7",
+			"deepseek-ai/DeepSeek-V3.2",
+		],
 	})
 	var initialization := {
 		"me": {
@@ -104,6 +115,17 @@ func _test_resident_context_payload(provider_script: Script) -> void:
 	_expect_equal(body.get("wake_packet"), wake_packet, "wake packet reaches context bridge")
 	_expect_equal(body.get("derived_constraints"), constraints, "constraints reach context bridge")
 	_expect_equal(body.get("messages"), messages, "compiled model messages are preserved")
+	_expect_equal(body.get("unlimited_mode"), true, "enhanced mode reaches the desktop bridge")
+	_expect_equal(body.get("unlimited_persona_mode"), "custom", "the selected persona reaches the bridge")
+	_expect_equal(body.get("unlimited_custom_prompt"), "你是谨慎但主动的小镇居民。", "custom resident prompt reaches the bridge")
+	_expect_equal(body.get("unlimited_runtime_prompt"), "优先处理眼前的危险。", "custom runtime prompt reaches the bridge")
+	_expect_equal(
+		body.get("fallback_models"),
+		["Pro/zai-org/GLM-4.7", "deepseek-ai/DeepSeek-V3.2"],
+		"configured SiliconFlow models reach the fallback router",
+	)
+	_expect_equal(body.get("unlimited_memory_extraction"), true, "memory extraction is explicitly enabled")
+	_expect_equal(body.get("unlimited_continuity_analysis"), true, "continuity analysis is explicitly enabled")
 	_expect(
 		not JSON.stringify(body).contains("temporary-siliconflow-key"),
 		"SiliconFlow key never enters the JSON body",

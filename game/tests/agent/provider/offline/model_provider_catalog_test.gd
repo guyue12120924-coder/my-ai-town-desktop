@@ -14,6 +14,9 @@ const SettingsServiceScript := preload(
 const ProviderSettingsScreenScript := preload(
 	"res://ui/provider_settings/ProviderSettingsScreen.gd"
 )
+const UnlimitedModeDialogScript := preload(
+	"res://ui/provider_settings/UnlimitedModeDialog.gd"
+)
 const ResidentAssignmentServiceScript := preload(
 	"res://ui/resident_model_assignment/runtime/ResidentModelAssignmentService.gd"
 )
@@ -427,6 +430,7 @@ func _initialize() -> void:
 	_test_local_endpoint_and_model_persistence()
 	_test_settings_service_custom_model_flow()
 	_test_custom_model_ui_grouping()
+	_test_unlimited_mode_dialog()
 	_finish_suite("MODEL_PROVIDER_CATALOG_PASS", [CONFIG_TEST_ROOT])
 
 
@@ -922,6 +926,57 @@ func _test_local_endpoint_and_model_persistence() -> void:
 		["qwen3:8b", "gemma3:4b"],
 		"local model ids survive a config reload",
 	)
+	var unsupported_unlimited := local_config.duplicate(true)
+	unsupported_unlimited["providers"]["ollama"][
+		"unlimitedModeEnabled"
+	] = true
+	_expect_equal(
+		(store.call("save_config", unsupported_unlimited) as Dictionary).get("ok"),
+		false,
+		"Unlimited mode fields are restricted to the SiliconFlow provider",
+	)
+	var unlimited_config := {
+		"schemaVersion": 2,
+		"selectedProviderId": "siliconflow",
+		"selectedModelByProvider": {
+			"siliconflow": "Pro/zai-org/GLM-4.7",
+		},
+		"providers": {
+			"siliconflow": {
+				"enabled": true,
+				"apiModels": ["Pro/zai-org/GLM-4.7"],
+				"unlimitedModeEnabled": true,
+				"unlimitedPersonaMode": "custom",
+				"unlimitedCustomPrompt": "保持居民身份和当前目标。",
+				"unlimitedRuntimePrompt": "严格返回动作 JSON。",
+				"unlimitedModelFallback": true,
+				"unlimitedMemoryExtraction": true,
+				"unlimitedContinuityAnalysis": true,
+			},
+		},
+	}
+	_expect_equal(
+		(store.call("save_config", unlimited_config) as Dictionary).get("ok"),
+		true,
+		"validated Unlimited mode settings persist for SiliconFlow",
+	)
+	_expect_equal(
+		(store.call("load_config") as Dictionary).get("config", {}).get(
+			"providers",
+			{},
+		).get("siliconflow", {}).get("unlimitedCustomPrompt", ""),
+		"保持居民身份和当前目标。",
+		"custom Unlimited prompt survives a config reload",
+	)
+	var oversized_prompt := unlimited_config.duplicate(true)
+	oversized_prompt["providers"]["siliconflow"][
+		"unlimitedRuntimePrompt"
+	] = "x".repeat(12001)
+	_expect_equal(
+		(store.call("save_config", oversized_prompt) as Dictionary).get("ok"),
+		false,
+		"oversized runtime prompts are rejected before persistence",
+	)
 	var remote_http_config := local_config.duplicate(true)
 	remote_http_config["providers"]["ollama"]["endpoint"] = (
 		"http://example.com:3000/v1"
@@ -1006,6 +1061,66 @@ func _test_settings_service_custom_model_flow() -> void:
 		request_host,
 	) as Dictionary
 	_expect_equal(bound.get("ok"), true, "settings service binds the real provider runtime")
+	var missing_custom_prompt := settings.call(
+		"dispatch",
+		"provider_settings.save_unlimited_mode",
+		{
+			"providerId": "siliconflow",
+			"enabled": true,
+			"personaMode": "custom",
+			"customPrompt": "",
+			"runtimePrompt": "",
+			"modelFallback": true,
+			"memoryExtraction": true,
+			"continuityAnalysis": true,
+		},
+	) as Dictionary
+	_expect_equal(
+		missing_custom_prompt.get("errorCode"),
+		"PROVIDER_UNLIMITED_CUSTOM_PROMPT_REQUIRED",
+		"custom persona mode rejects an empty prompt",
+	)
+	var saved_unlimited_mode := settings.call(
+		"dispatch",
+		"provider_settings.save_unlimited_mode",
+		{
+			"providerId": "siliconflow",
+			"enabled": true,
+			"personaMode": "custom",
+			"customPrompt": "按当前人物目标行动。",
+			"runtimePrompt": "优先保证动作可执行。",
+			"modelFallback": true,
+			"memoryExtraction": true,
+			"continuityAnalysis": true,
+		},
+	) as Dictionary
+	_expect_equal(
+		saved_unlimited_mode.get("ok"),
+		true,
+		"settings service saves the independent Unlimited mode",
+	)
+	var siliconflow_projection := _provider_from_view_model(
+		settings.call("get_view_model") as Dictionary,
+		"siliconflow",
+	)
+	_expect_equal(
+		(siliconflow_projection.get("unlimitedMode", {}) as Dictionary).get(
+			"enabled",
+		),
+		true,
+		"enabled Unlimited mode is projected back to the settings UI",
+	)
+	var runtime_configs := settings.call(
+		"_provider_configs_for_runtime"
+	) as Dictionary
+	_expect_equal(
+		runtime_configs.get("siliconflow", {}).get(
+			"unlimited_custom_prompt",
+			"",
+		),
+		"按当前人物目标行动。",
+		"saved persona prompt reaches the SiliconFlow runtime config",
+	)
 	var discovered_ark := settings.call(
 		"_store_discovered_models",
 		"volcengine-ark",
@@ -1280,6 +1395,33 @@ func _test_custom_model_ui_grouping() -> void:
 		"自定义 · Ollama",
 		"resident model cards identify custom models and their connection source",
 	)
+
+
+func _test_unlimited_mode_dialog() -> void:
+	var dialog := UnlimitedModeDialogScript.new() as Control
+	dialog.call("_ready")
+	var saved_payloads: Array[Dictionary] = []
+	dialog.connect("save_requested", func(payload: Dictionary) -> void:
+		saved_payloads.append(payload.duplicate(true))
+	)
+	dialog.call("configure", "siliconflow", {
+		"enabled": true,
+		"personaMode": "custom",
+		"customPrompt": "根据当前目标行动。",
+		"runtimePrompt": "只返回 JSON。",
+		"modelFallback": true,
+		"memoryExtraction": true,
+		"continuityAnalysis": true,
+	})
+	dialog.call("popup_centered")
+	_expect_equal(dialog.visible, true, "Unlimited mode dialog opens as a modal control")
+	dialog.call("_submit")
+	_expect_equal(saved_payloads.size(), 1, "Unlimited mode dialog emits one validated save payload")
+	if saved_payloads.size() == 1:
+		_expect_equal(saved_payloads[0].get("providerId"), "siliconflow", "dialog keeps the SiliconFlow provider id")
+		_expect_equal(saved_payloads[0].get("enabled"), true, "dialog emits enhanced mode selection")
+		_expect_equal(saved_payloads[0].get("personaMode"), "custom", "dialog emits the custom persona selection")
+	dialog.free()
 
 
 func _provider_from_view_model(view_model: Dictionary, provider_id: String) -> Dictionary:

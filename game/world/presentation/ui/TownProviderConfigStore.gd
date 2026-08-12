@@ -32,7 +32,24 @@ const PROVIDER_CONFIG_KEYS := [
 	"displayName",
 	"authRequired",
 	"insecureHttpConsentEndpoint",
+	"unlimitedModeEnabled",
+	"unlimitedPersonaMode",
+	"unlimitedCustomPrompt",
+	"unlimitedRuntimePrompt",
+	"unlimitedModelFallback",
+	"unlimitedMemoryExtraction",
+	"unlimitedContinuityAnalysis",
 ]
+const UNLIMITED_PROVIDER_CONFIG_KEYS := [
+	"unlimitedModeEnabled",
+	"unlimitedPersonaMode",
+	"unlimitedCustomPrompt",
+	"unlimitedRuntimePrompt",
+	"unlimitedModelFallback",
+	"unlimitedMemoryExtraction",
+	"unlimitedContinuityAnalysis",
+]
+const UNLIMITED_PROMPT_MAX_LENGTH := 12000
 
 var _path := DEFAULT_PATH
 
@@ -277,6 +294,10 @@ func _validate_config(
 		var provider := provider_value as Dictionary
 		if not _provider_config_shape_is_valid(provider):
 			return _failure("PROVIDER_CONFIG_INVALID")
+		if provider_id_value != "siliconflow":
+			for unlimited_key: String in UNLIMITED_PROVIDER_CONFIG_KEYS:
+				if provider.has(unlimited_key):
+					return _failure("PROVIDER_CONFIG_INVALID")
 		if provider.has("enabled") and typeof(provider.get("enabled")) != TYPE_BOOL:
 			return _failure("PROVIDER_CONFIG_INVALID")
 		if provider.has("apiKeyRef"):
@@ -353,6 +374,34 @@ func _validate_config(
 			provider.get("authRequired")
 		) != TYPE_BOOL:
 			return _failure("PROVIDER_CONFIG_INVALID")
+		for boolean_key: String in [
+			"unlimitedModeEnabled",
+			"unlimitedModelFallback",
+			"unlimitedMemoryExtraction",
+			"unlimitedContinuityAnalysis",
+		]:
+			if provider.has(boolean_key) and typeof(
+				provider.get(boolean_key)
+			) != TYPE_BOOL:
+				return _failure("PROVIDER_CONFIG_INVALID")
+		if provider.has("unlimitedPersonaMode"):
+			var persona_mode: Variant = provider.get("unlimitedPersonaMode")
+			if (
+				typeof(persona_mode) != TYPE_STRING
+				or persona_mode not in ["builtin", "custom"]
+			):
+				return _failure("PROVIDER_CONFIG_INVALID")
+		for prompt_key: String in [
+			"unlimitedCustomPrompt",
+			"unlimitedRuntimePrompt",
+		]:
+			if provider.has(prompt_key):
+				var prompt_value: Variant = provider.get(prompt_key)
+				if (
+					typeof(prompt_value) != TYPE_STRING
+					or not _prompt_text_is_valid(prompt_value as String)
+				):
+					return _failure("PROVIDER_CONFIG_INVALID")
 	if not _json_safe(config):
 		return _failure("PROVIDER_CONFIG_INVALID")
 	return _success()
@@ -378,6 +427,16 @@ func _display_name_is_valid(display_name: String) -> bool:
 	for character: String in display_name:
 		var codepoint := character.unicode_at(0)
 		if codepoint < 32 or codepoint == 127:
+			return false
+	return true
+
+
+func _prompt_text_is_valid(prompt: String) -> bool:
+	if prompt.length() > UNLIMITED_PROMPT_MAX_LENGTH:
+		return false
+	for character: String in prompt:
+		var codepoint := character.unicode_at(0)
+		if (codepoint < 32 and character not in ["\n", "\r", "\t"]) or codepoint == 127:
 			return false
 	return true
 

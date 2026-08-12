@@ -626,6 +626,67 @@ func _build_selected_header(
 			str(provider.get("displayName", "Provider")),
 			ProviderTheme.COMPOSITE_INK
 		)
+	var unlimited_options := provider.get("unlimitedMode", {}) as Dictionary
+	if bool(unlimited_options.get("supported", false)):
+		var unlimited_button := Button.new()
+		unlimited_button.name = "UnlimitedModeButton"
+		unlimited_button.text = (
+			"Unlimited：开"
+			if bool(unlimited_options.get("enabled", false))
+			else "Unlimited 模式"
+		)
+		_place(
+			unlimited_button,
+			_scaled_rect(Rect2(1168.0, 228.0, 166.0, 45.0)),
+			detail_rect,
+		)
+		unlimited_button.focus_mode = Control.FOCUS_ALL
+		unlimited_button.add_theme_font_override(
+			"font",
+			ProviderTheme.composite_font("small"),
+		)
+		unlimited_button.add_theme_font_size_override(
+			"font_size",
+			_scaled_font_size(17),
+		)
+		for state: String in ["normal", "hover", "pressed", "focus", "disabled"]:
+			unlimited_button.add_theme_stylebox_override(
+				state,
+				ProviderTheme.button_style("secondary", state),
+			)
+		for color_id: String in [
+			"font_color",
+			"font_hover_color",
+			"font_pressed_color",
+			"font_focus_color",
+		]:
+			unlimited_button.add_theme_color_override(
+				color_id,
+				ProviderTheme.COMPOSITE_INK,
+			)
+		unlimited_button.disabled = (
+			not _action_enabled("saveUnlimitedMode")
+			or _operation_loading()
+		)
+		unlimited_button.tooltip_text = "配置 Unlimited AI 独立增强模式"
+		unlimited_button.add_to_group("provider_settings_touch_target")
+		unlimited_button.set_meta("gate_id", "unlimited_mode")
+		_register_owner(
+			unlimited_button,
+			"unlimited_mode",
+			"operation_control",
+			"ui.provider-settings.unlimited-mode.v1",
+			"base_ninepatch_state_set",
+		)
+		_mark_surface(unlimited_button)
+		provider_detail.add_child(unlimited_button)
+		ProviderButtonMotion.attach(unlimited_button)
+		unlimited_button.pressed.connect(func() -> void:
+			ui_action.emit(
+				&"ui.open_unlimited_mode",
+				{"providerId": str(provider.get("providerId", ""))},
+			)
+		)
 	var toggle := _hit_button(
 		provider_detail,
 		detail_rect,

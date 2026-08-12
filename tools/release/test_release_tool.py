@@ -130,6 +130,8 @@ class ReleaseToolTest(unittest.TestCase):
             self.assertTrue(any(name.endswith("/更新日志.md") for name in names))
             self.assertTrue(any(name.endswith("/build-info.json") for name in names))
             self.assertTrue(any(name.endswith("/desktop_bridge/server.mjs") for name in names))
+            self.assertTrue(any(name.endswith("/desktop_bridge/unlimited-mode.mjs") for name in names))
+            self.assertTrue(any(name.endswith("/vendor/unlimited-ai-first/src/prompts.js") for name in names))
 
     def test_macos_package_preserves_executable_mode(self) -> None:
         with tempfile.TemporaryDirectory() as raw_temp:

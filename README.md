@@ -1,7 +1,7 @@
 <h1 align="center">AI Town · SiliconFlow Desktop</h1>
 
 <p align="center">
-  基于原版最新代码、接入硅基流动与人物连续性上下文的 Windows 桌面版
+  基于原版最新代码、接入硅基流动与 Unlimited AI 独立增强模式的 Windows 桌面版
 </p>
 
 <p align="center">
@@ -23,18 +23,21 @@ AI Town 是一款使用 Godot 4.7 开发的单机生活模拟游戏。小镇居�
 本项目从 `mewamew/my_ai_town` 最新 `main` 建立，保留原版的小镇世界、居民 Agent、记忆、关系、存档和界面逻辑，并增加：
 
 - **硅基流动专用 Provider**：使用官方 OpenAI-compatible API，保存 API Key 后动态读取账户模型列表。
-- **`unlimited-ai-first` 人物上下文逻辑**：居民决策前，调用固定提交中未修改的 `src/context.js`，把人物性格、目标、职业、关系提示、当前位置、近期事件、记忆和世界约束整理成连续性上下文。
+- **普通 / Unlimited 双模式**：普通模式保持 AI Town 原有的稳定 JSON 决策链；独立增强模式完整接入 `context.js`、`prompts.js`、`MODEL_RUNTIME_INJECTION`、😈/😇 人物 Prompt 切换、模型自动切换、记忆提取与连续性分析。
+- **可编辑的居民 Prompt**：😈 模式使用固定提交中未修改的内置创作 Prompt；😇 模式使用玩家填写的居民 Prompt；运行 Prompt 也可以单独修改。桥接层始终追加 AI Town 动作合同，要求模型只返回游戏可解析的 JSON，而不是小说正文。
+- **复用原版记忆系统**：增强模式的记忆提取与连续性分析进入 AI Town 现有的长期记忆整理请求，结果继续由原版 schema、持久化存档与世界事实约束管理。
+- **硅基流动模型回退**：当前模型出现限流、超时或可重试的服务错误时，按模型设置中已添加的硅基流动模型顺序尝试下一个模型。
 - **可直接分发的 Windows 运行时**：发布包自带 `node.exe` 和桥接脚本，玩家无需另装 Node.js。
 - **本机安全边界**：硅基流动地址固定为官方 HTTPS 接口；本机桥使用随机端口、每次启动随机令牌和发送密钥前的身份检查；API Key 由原版加密凭据存储保存，不写入仓库或请求正文。
 
-`unlimited-ai-first` 的许可禁止未经授权的修改、改编和商业使用。本分支只以 Git 子模块固定并调用其未修改文件；使用或分发前请阅读 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) 和子模块内的 `LICENSE`。
+`unlimited-ai-first` 的许可禁止未经授权的修改、改编和商业使用。本分支固定调用其未修改的 `context.js` 与 `prompts.js`，并在本项目适配层中使用原版运行约束文本；使用或分发前必须确认已获得所需授权，并阅读 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) 和子模块内的 `LICENSE`。
 
 ## 最新更新
 
 <!-- latest-update:start -->
 ### 2026 年 8 月 12 日更新
 
-这次桌面分支在原版最新代码上新增硅基流动专用模型入口，并通过未修改的 `unlimited-ai-first/src/context.js` 为居民决策整理人物连续性上下文；Windows 包会自带隔离的 Node 运行时。它同时继承原版对局域网模型服务、运行流畅度、界面反馈和版本识别的最新改进。
+这次更新在硅基流动桌面版中增加了独立的 Unlimited AI 增强模式：普通 AI Town 模式保持不变，增强模式完整接入人物上下文、原版内置 Prompt、运行约束、人物模式切换、模型自动切换、长期记忆提取和连续性分析，并把所有输出继续约束为 AI Town 可执行的 JSON 决策。
 
 [查看完整《更新日志》](更新日志.md)
 <!-- latest-update:end -->
@@ -103,7 +106,9 @@ cd my-ai-town-desktop
 1. 选择“硅基流动”。
 2. 填入硅基流动 API Key，并获取模型列表。
 3. 添加需要的模型并分配给居民。
-4. 开始新游戏或继续存档。
+4. 点击“Unlimited 模式”，选择普通模式或 Unlimited AI 增强模式。
+5. 增强模式中可选择 😈 原版内置 Prompt 或 😇 自定义人物 Prompt，并设置运行 Prompt、模型自动切换、记忆提取和连续性分析。
+6. 开始新游戏或继续存档。
 
 模型密钥只应通过游戏内设置保存，不要写入仓库。如果忘记递归克隆，请先运行 `git submodule update --init --recursive`。
 

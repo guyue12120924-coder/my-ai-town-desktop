@@ -4,6 +4,11 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { buildCreativeContextMessage } from "../vendor/unlimited-ai-first/src/context.js";
+import {
+  enrichUnlimitedMessages,
+  fallbackModels,
+  shouldFallback
+} from "./unlimited-mode.mjs";
 
 export const BRIDGE_HOST = "127.0.0.1";
 export const DEFAULT_BRIDGE_PORT = 19841;
@@ -132,7 +137,8 @@ export function buildAiTownContext(payload) {
 }
 
 export function enrichMessages(payload) {
-  const messages = arrayValue(payload.messages).map((message) => ({ ...message }));
+  let messages = arrayValue(payload.messages).map((message) => ({ ...message }));
+  messages = enrichUnlimitedMessages(payload, messages);
   if (payload.request_kind !== "resident_decision") return messages;
   const context = buildAiTownContext(payload);
   if (!context) return messages;
@@ -207,8 +213,8 @@ function validMessages(value) {
   });
 }
 
-function normalizedChatBody(payload) {
-  const rawModel = String(payload.model ?? "").trim();
+function validModelId(value) {
+  const rawModel = String(value ?? "").trim();
   if (
     !rawModel
     || rawModel.length > 300
@@ -216,6 +222,11 @@ function normalizedChatBody(payload) {
   ) {
     throw Object.assign(new Error("model must be a non-empty model id"), { status: 400 });
   }
+  return rawModel;
+}
+
+function normalizedChatBody(payload, model = payload.model) {
+  const rawModel = validModelId(model);
   const messages = enrichMessages(payload);
   if (!validMessages(messages)) {
     throw Object.assign(new Error("messages must contain 1 to 10 valid messages"), { status: 400 });
@@ -268,13 +279,70 @@ async function upstreamRequest(url, apiKey, options, fetchImpl) {
   };
 }
 
-function sendUpstream(response, upstream) {
+async function chatRequestWithFallback(payload, apiKey, fetchImpl) {
+  const candidates = fallbackModels(payload);
+  if (!candidates.length) validModelId(payload.model);
+  const requestedModel = validModelId(candidates[0]);
+  let fallbackReason = "";
+  let lastError = null;
+  let lastUpstream = null;
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const model = validModelId(candidates[index]);
+    const body = normalizedChatBody(payload, model);
+    try {
+      const upstream = await upstreamRequest(
+        SILICONFLOW_CHAT_URL,
+        apiKey,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        },
+        fetchImpl
+      );
+      lastUpstream = upstream;
+      if (
+        upstream.status >= 200
+        && upstream.status < 300
+      ) {
+        return { upstream, requestedModel, usedModel: model, fallbackReason };
+      }
+      if (
+        index >= candidates.length - 1
+        || !shouldFallback(upstream.status)
+      ) {
+        return { upstream, requestedModel, usedModel: model, fallbackReason };
+      }
+      if (!fallbackReason) fallbackReason = `HTTP ${upstream.status} on ${model}`;
+    } catch (error) {
+      lastError = error;
+      if (!fallbackReason) fallbackReason = `request failure on ${model}`;
+      if (index >= candidates.length - 1) throw error;
+    }
+  }
+
+  if (lastUpstream) {
+    return {
+      upstream: lastUpstream,
+      requestedModel,
+      usedModel: validModelId(candidates.at(-1)),
+      fallbackReason
+    };
+  }
+  throw lastError || new Error("SiliconFlow request failed");
+}
+
+function sendUpstream(response, upstream, route = {}) {
   response.writeHead(upstream.status, {
     "Content-Type": upstream.contentType,
     "Cache-Control": "no-store",
     "Content-Length": upstream.body.length,
     "X-AI-Town-Context": "unlimited-ai-first/context.js",
-    "X-Unlimited-AI-Commit": UNLIMITED_AI_COMMIT
+    "X-Unlimited-AI-Commit": UNLIMITED_AI_COMMIT,
+    ...(route.requestedModel ? { "X-Requested-Model": route.requestedModel } : {}),
+    ...(route.usedModel ? { "X-Model-Used": route.usedModel } : {}),
+    ...(route.fallbackReason ? { "X-Model-Fallback": route.fallbackReason } : {})
   });
   response.end(upstream.body);
 }
@@ -311,18 +379,8 @@ export function createRequestHandler({ fetchImpl = fetch, bridgeToken = "" } = {
 
       if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
         const payload = await readJsonBody(request);
-        const body = normalizedChatBody(payload);
-        const upstream = await upstreamRequest(
-          SILICONFLOW_CHAT_URL,
-          apiKey,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body)
-          },
-          fetchImpl
-        );
-        return sendUpstream(response, upstream);
+        const route = await chatRequestWithFallback(payload, apiKey, fetchImpl);
+        return sendUpstream(response, route.upstream, route);
       }
 
       return jsonResponse(response, 404, { error: { message: "Not found" } });

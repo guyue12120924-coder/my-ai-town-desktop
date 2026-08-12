@@ -25,7 +25,9 @@ PLATFORMS = ("windows", "macos")
 WINDOWS_DESKTOP_RUNTIME_FILES = (
     "node/node.exe",
     "desktop_bridge/server.mjs",
+    "desktop_bridge/unlimited-mode.mjs",
     "vendor/unlimited-ai-first/src/context.js",
+    "vendor/unlimited-ai-first/src/prompts.js",
     "vendor/unlimited-ai-first/LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "package.json",

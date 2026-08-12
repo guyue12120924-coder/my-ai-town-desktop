@@ -24,6 +24,9 @@ const CompositeDesktop = preload(
 const FormalDialog = preload(
 	"res://ui/common/formal_dialog/FormalConfirmationDialog.gd"
 )
+const UnlimitedDialog = preload(
+	"res://ui/provider_settings/UnlimitedModeDialog.gd"
+)
 const ENDPOINT_SECURITY := preload(
 	"res://common/ProviderEndpointSecurity.gd"
 )
@@ -54,6 +57,7 @@ var _delete_model_confirmation: FormalDialog
 var _delete_connection_confirmation: FormalDialog
 var _connection_name_dialog: FormalDialog
 var _insecure_http_confirmation: FormalDialog
+var _unlimited_mode_dialog: UnlimitedModeDialog
 var _connection_name_edit: LineEdit
 var _connection_name_mode := ""
 var _connection_name_provider_id := ""
@@ -98,6 +102,7 @@ func _ready() -> void:
 	_build_connection_name_dialog()
 	_build_insecure_http_confirmation()
 	_build_delete_model_blocked_dialog()
+	_build_unlimited_mode_dialog()
 	if _view_model.is_empty():
 		_view_model = _empty_view_model()
 		_render_data = (
@@ -108,6 +113,8 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if is_instance_valid(_unlimited_mode_dialog) and _unlimited_mode_dialog.visible:
+		return
 	if event.is_action_pressed("ui_cancel"):
 		if request_back():
 			get_viewport().set_input_as_handled()
@@ -237,6 +244,32 @@ func _build_insecure_http_confirmation() -> void:
 		_cancel_insecure_http_save
 	)
 	add_child(_insecure_http_confirmation)
+
+
+func _build_unlimited_mode_dialog() -> void:
+	if is_instance_valid(_unlimited_mode_dialog):
+		return
+	_unlimited_mode_dialog = UnlimitedDialog.new()
+	_unlimited_mode_dialog.name = "UnlimitedModeDialog"
+	_unlimited_mode_dialog.save_requested.connect(
+		_save_unlimited_mode_settings
+	)
+	add_child(_unlimited_mode_dialog)
+
+
+func _open_unlimited_mode_dialog(provider_id: String) -> void:
+	var provider := _find_provider(provider_id)
+	if provider.is_empty():
+		return
+	var options := provider.get("unlimitedMode", {}) as Dictionary
+	if not bool(options.get("supported", false)):
+		return
+	_unlimited_mode_dialog.configure(provider_id, options)
+	_unlimited_mode_dialog.popup_centered()
+
+
+func _save_unlimited_mode_settings(payload: Dictionary) -> void:
+	_dispatch_intent(&"provider_settings.save_unlimited_mode", payload)
 
 
 func _request_create_compatible_connection() -> void:
@@ -1220,6 +1253,10 @@ func _on_composite_ui_action(
 			)
 		&"ui.toggle_key_visibility":
 			_toggle_key_visibility(_selected_provider_id)
+		&"ui.open_unlimited_mode":
+			_open_unlimited_mode_dialog(
+				str(payload.get("providerId", _selected_provider_id))
+			)
 		&"ui.save_key":
 			var submitted_key := str(payload.get("apiKey", ""))
 			_dispatch_intent(
@@ -1778,6 +1815,14 @@ func _build_detail() -> Control:
 		7
 	)
 	detail.add_child(_build_detail_header(selected))
+	if bool(
+		(selected.get("unlimitedMode", {}) as Dictionary).get(
+			"supported",
+			false,
+		)
+	):
+		detail.add_child(_detail_divider())
+		detail.add_child(_build_unlimited_mode_section(selected))
 	if bool(selected.get("customModels", false)):
 		detail.add_child(_detail_divider())
 		detail.add_child(_build_custom_connection_picker(selected))
@@ -1878,6 +1923,47 @@ func _build_detail_header(provider: Dictionary) -> Control:
 		)
 	)
 	row.add_child(toggle)
+	return panel
+
+
+func _build_unlimited_mode_section(provider: Dictionary) -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "UnlimitedModeSection"
+	panel.add_theme_stylebox_override("panel", ProviderTheme.empty_style())
+	_register_paper_surface(panel, [0, 0, 0, 0])
+	_mark_content_surface(panel)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	panel.add_child(row)
+	var options := provider.get("unlimitedMode", {}) as Dictionary
+	var copy := _label(
+		(
+			"Unlimited AI 增强模式已启用"
+			if bool(options.get("enabled", false))
+			else "当前使用普通 AI Town 模式"
+		),
+		_body_font_size(),
+		ProviderTheme.INK,
+		"unlimited_mode_status",
+	)
+	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	copy.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(copy)
+	var configure_button := _button(
+		"配置增强模式",
+		"secondary",
+		Vector2(190, _control_height()),
+	)
+	configure_button.name = "UnlimitedModeButton"
+	configure_button.set_meta("gate_id", "unlimited_mode")
+	configure_button.disabled = (
+		not _action_enabled("saveUnlimitedMode")
+		or _operation_loading()
+	)
+	configure_button.pressed.connect(func() -> void:
+		_open_unlimited_mode_dialog(String(provider.get("providerId", "")))
+	)
+	row.add_child(configure_button)
 	return panel
 
 

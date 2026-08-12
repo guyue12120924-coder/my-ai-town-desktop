@@ -106,4 +106,32 @@ func _build_request_body(model_request: Dictionary) -> Dictionary:
 	body["derived_constraints"] = (
 		model_request.get("derived_constraints", {}) as Dictionary
 	).duplicate(true)
+	body["unlimited_mode"] = bool(
+		_config.get("unlimited_mode_enabled", false),
+	)
+	if bool(body["unlimited_mode"]):
+		body["unlimited_persona_mode"] = String(
+			_config.get("unlimited_persona_mode", "builtin"),
+		)
+		body["unlimited_custom_prompt"] = String(
+			_config.get("unlimited_custom_prompt", ""),
+		)
+		body["unlimited_runtime_prompt"] = String(
+			_config.get("unlimited_runtime_prompt", ""),
+		)
+		body["unlimited_model_fallback"] = bool(
+			_config.get("unlimited_model_fallback", true),
+		)
+		body["unlimited_memory_extraction"] = bool(
+			_config.get("unlimited_memory_extraction", true),
+		)
+		body["unlimited_continuity_analysis"] = bool(
+			_config.get("unlimited_continuity_analysis", true),
+		)
+		var fallback_value: Variant = _config.get("fallback_models", [])
+		body["fallback_models"] = (
+			(fallback_value as Array).duplicate()
+			if fallback_value is Array
+			else []
+		)
 	return body

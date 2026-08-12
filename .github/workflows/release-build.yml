@@ -193,8 +193,12 @@ jobs:
           cp "/tmp/node-windows/node-v${NODE_VERSION}-win-x64/node.exe" \
             build/windows/node/node.exe
           cp desktop_bridge/server.mjs build/windows/desktop_bridge/server.mjs
+          cp desktop_bridge/unlimited-mode.mjs \
+            build/windows/desktop_bridge/unlimited-mode.mjs
           cp vendor/unlimited-ai-first/src/context.js \
             build/windows/vendor/unlimited-ai-first/src/context.js
+          cp vendor/unlimited-ai-first/src/prompts.js \
+            build/windows/vendor/unlimited-ai-first/src/prompts.js
           cp vendor/unlimited-ai-first/LICENSE \
             build/windows/vendor/unlimited-ai-first/LICENSE
           cp vendor/unlimited-ai-first/README.md \
