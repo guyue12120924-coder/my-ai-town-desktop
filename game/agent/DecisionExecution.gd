@@ -3,14 +3,17 @@ extends RefCounted
 
 
 const AgentContractScript := preload("res://agent/AgentContract.gd")
+const ResidentPromptInjectorScript := preload("res://agent/ResidentPromptInjector.gd")
 
 var _model_provider: Object
 var _prompt_compiler: RefCounted
+var _resident_prompt_injector: RefCounted
 
 
 func _init(model_provider: Object, prompt_compiler: RefCounted) -> void:
 	_model_provider = model_provider
 	_prompt_compiler = prompt_compiler
+	_resident_prompt_injector = ResidentPromptInjectorScript.new()
 
 
 func replace_model_provider(model_provider: Object) -> Dictionary:
@@ -62,6 +65,7 @@ func request_decision(
 			"errors": model_request.get("errors", ["模型输入组装失败"]),
 		})
 		return
+	_inject_resident_persona(model_request, initialization)
 	_model_provider.call(
 		"request_decision",
 		model_request,
@@ -78,6 +82,30 @@ func request_decision(
 			Time.get_ticks_usec() - probe_lap_usec,
 			Engine.get_process_frames(),
 		])
+
+
+func _inject_resident_persona(
+	model_request: Dictionary,
+	initialization: Dictionary,
+) -> void:
+	if _resident_prompt_injector == null:
+		return
+	var messages_value: Variant = model_request.get("messages", [])
+	if typeof(messages_value) != TYPE_ARRAY:
+		return
+	var messages := messages_value as Array
+	if messages.is_empty() or typeof(messages[0]) != TYPE_DICTIONARY:
+		return
+	var system_message := (messages[0] as Dictionary).duplicate(true)
+	if String(system_message.get("role", "")) != "system":
+		return
+	system_message["content"] = _resident_prompt_injector.call(
+		"inject",
+		String(system_message.get("content", "")),
+		initialization,
+	)
+	messages[0] = system_message
+	model_request["messages"] = messages
 
 
 func _validate_model_decision(
@@ -179,11 +207,11 @@ func _validate_model_decision(
 			)
 		)
 		if social_request_errors.is_empty():
-				canonical_decision["social_request"] = (
-					AgentContractScript.canonicalize_social_request(
-						raw_decision.get("social_request") as Dictionary,
-					)
+			canonical_decision["social_request"] = (
+				AgentContractScript.canonicalize_social_request(
+					raw_decision.get("social_request") as Dictionary,
 				)
+			)
 	var conversation_follow_up_errors: Array[String] = []
 	if raw_decision.has("conversation_follow_up"):
 		conversation_follow_up_errors = (
