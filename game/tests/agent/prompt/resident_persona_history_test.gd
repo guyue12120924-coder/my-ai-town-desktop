@@ -45,6 +45,32 @@ func _initialize() -> void:
 			"恢复历史后其他实例立即读取到旧版本",
 		)
 
+	var cleared := reader.call("get_profile", TEST_ID) as Dictionary
+	cleared["custom_prompt"] = ""
+	var clear_result := writer.call("set_profile", TEST_ID, cleared) as Dictionary
+	_expect(bool(clear_result.get("ok", false)), "角色 Prompt 可以明确清空")
+	var prompt_after_clear := String(writer.call(
+		"build_prompt",
+		TEST_ID,
+		{
+			"me": {
+				"resident_id": TEST_ID,
+				"attributes": {
+					"name": "测试居民",
+					"custom_prompt": "初始化阶段遗留的旧 Prompt",
+				},
+			},
+		},
+	))
+	_expect(
+		not prompt_after_clear.contains("初始化阶段遗留的旧 Prompt"),
+		"用户清空 Prompt 后初始化旧值不会重新出现",
+	)
+	_expect(
+		String((reader.call("get_profile", TEST_ID) as Dictionary).get("custom_prompt", "")) == "",
+		"清空结果会立即同步到已有 Profile 实例",
+	)
+
 	writer.call("remove_profile", TEST_ID)
 	if _failed == 0:
 		print("RESIDENT_PERSONA_HISTORY_PASS")
