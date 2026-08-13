@@ -19,7 +19,15 @@ game/prompts/base.system.prompt
 
 这里适合放所有居民共同遵守的模型级规则。例如总体扮演方式、连续性要求、通用表达习惯等。
 
-## 为单个居民设置专属 Prompt
+## 在游戏里为单个居民填写 Prompt
+
+进入居民创建或编辑页面后，点击右上角的 **“角色 Prompt”** 按钮即可打开独立的多行编辑框。
+
+- 编辑已有居民时，点击“保存 Prompt”会直接保存到该居民的运行时档案。
+- 新建居民时，可以在创建完成前先填写 Prompt；系统会暂存内容，并在创建成功取得稳定 `residentId` 后自动绑定。
+- 角色 Prompt 最多 8000 个字符，只影响当前角色，不会覆盖 AI Town 的世界事实与动作合同。
+
+## 通过文件配置单个居民
 
 仓库内置默认档案文件：
 
@@ -64,4 +72,6 @@ user://resident_profiles.json
 - `game/agent/ResidentPersonaProfile.gd`：读取、保存和组装居民角色档案
 - `game/agent/ResidentPromptInjector.gd`：组装全局 Prompt、AI Town 运行 Prompt 和角色 Prompt
 - `game/agent/DecisionExecution.gd`：在真正调用 Provider 前执行最终注入
+- `game/ui/custom_resident_creator/ResidentCustomPromptEditor.gd`：居民页面里的角色 Prompt 弹窗与新角色绑定逻辑
 - `game/tests/agent/prompt/resident_persona_prompt_test.gd`：验证三层 Prompt 最终确实进入 Provider 请求
+- `game/tests/agent/prompt/resident_custom_prompt_editor_test.gd`：验证角色 Prompt 编辑器能够在创建成功后持久化到对应居民
