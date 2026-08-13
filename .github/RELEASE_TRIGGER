@@ -1,4 +1,4 @@
 version=0.1.0-beta.4
-source_main=f1167d9f68ab1d3811fae1f5ac271868656d6d53
-reason=post-PR4 Windows release validation after zero-reference schema fix
-attempt=4
+source_main=f323c6bdd8767e8ac412e825c081e06fc3f804eb
+reason=post-PR4 Windows release validation after committing Godot-generated script UIDs
+attempt=5
