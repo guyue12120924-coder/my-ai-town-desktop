@@ -3,16 +3,27 @@ extends Control
 
 
 const PersonaProfileScript := preload("res://agent/ResidentPersonaProfile.gd")
+const PromptInjectorScript := preload("res://agent/ResidentPromptInjector.gd")
+const PromptTemplateLibraryScript := preload("res://agent/ResidentPromptTemplateLibrary.gd")
+const PromptBudgetScript := preload("res://agent/PromptBudgetManager.gd")
 const PROMPT_MAX_LENGTH := 8000
 
 var _page: Control
 var _profile_store: PersonaProfileScript
+var _prompt_injector: ResidentPromptInjector
+var _templates: Array = []
 var _pending_prompt := ""
 var _button: Button
 var _overlay: ColorRect
 var _prompt_edit: TextEdit
 var _status_label: Label
 var _counter_label: Label
+var _template_option: OptionButton
+var _history_option: OptionButton
+var _restore_history_button: Button
+var _preview_overlay: ColorRect
+var _preview_text: TextEdit
+var _preview_meta_label: Label
 
 
 func _ready() -> void:
@@ -20,7 +31,23 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	z_index = 250
 	_profile_store = PersonaProfileScript.new()
+	_prompt_injector = PromptInjectorScript.new()
+	_templates = PromptTemplateLibraryScript.templates()
 	call_deferred("_attach_to_page")
+
+
+func _input(event: InputEvent) -> void:
+	if not event.is_action_pressed("ui_cancel"):
+		return
+	# Consume Escape before the parent page's _unhandled_input() can interpret it
+	# as "leave the resident screen" while a modal Prompt layer is open.
+	if is_instance_valid(_preview_overlay) and _preview_overlay.visible:
+		_preview_overlay.visible = false
+		get_viewport().set_input_as_handled()
+		return
+	if is_instance_valid(_overlay) and _overlay.visible:
+		_close_editor()
+		get_viewport().set_input_as_handled()
 
 
 func _attach_to_page() -> void:
@@ -29,6 +56,7 @@ func _attach_to_page() -> void:
 		return
 	_build_button()
 	_build_overlay()
+	_build_preview_overlay()
 	if _page.has_signal("intent_requested"):
 		var callback := Callable(self, "_on_page_intent_requested")
 		if not _page.is_connected("intent_requested", callback):
@@ -68,10 +96,10 @@ func _build_overlay() -> void:
 	var panel := PanelContainer.new()
 	panel.name = "ResidentCustomPromptPanel"
 	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.offset_left = -390.0
-	panel.offset_top = -285.0
-	panel.offset_right = 390.0
-	panel.offset_bottom = 285.0
+	panel.offset_left = -410.0
+	panel.offset_top = -380.0
+	panel.offset_right = 410.0
+	panel.offset_bottom = 380.0
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	_overlay.add_child(panel)
 
@@ -83,7 +111,7 @@ func _build_overlay() -> void:
 	panel.add_child(margin)
 
 	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", 14)
+	content.add_theme_constant_override("separation", 10)
 	margin.add_child(content)
 
 	var title := Label.new()
@@ -94,15 +122,64 @@ func _build_overlay() -> void:
 	var hint := Label.new()
 	hint.text = (
 		"这里的内容只作用于当前角色，会与性格、欲望、说话方式一起进入模型。"
-		+ "它不能覆盖世界事实、可执行动作范围或 AI Town 的系统合同。"
+		+ "角色 Prompt 不能覆盖世界事实、可执行动作、输出合同或更高优先级规则。"
 	)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.custom_minimum_size = Vector2(710, 48)
+	hint.custom_minimum_size = Vector2(750, 52)
 	content.add_child(hint)
+
+	var template_row := HBoxContainer.new()
+	template_row.name = "ResidentPromptTemplateRow"
+	template_row.add_theme_constant_override("separation", 10)
+	_template_option = OptionButton.new()
+	_template_option.name = "ResidentPromptTemplateOption"
+	_template_option.custom_minimum_size = Vector2(420, 44)
+	_template_option.add_item("选择 Prompt 模板（可选）")
+	for template_value: Variant in _templates:
+		var template := template_value as Dictionary
+		_template_option.add_item(String(template.get("label", "未命名模板")))
+		_template_option.set_item_tooltip(
+			_template_option.item_count - 1,
+			String(template.get("description", "")),
+		)
+	template_row.add_child(_template_option)
+
+	var insert_template_button := Button.new()
+	insert_template_button.name = "ResidentPromptInsertTemplateButton"
+	insert_template_button.text = "插入模板"
+	insert_template_button.custom_minimum_size = Vector2(120, 44)
+	insert_template_button.pressed.connect(_apply_selected_template)
+	template_row.add_child(insert_template_button)
+
+	var preview_button := Button.new()
+	preview_button.name = "ResidentPromptPreviewButton"
+	preview_button.text = "预览组合 Prompt"
+	preview_button.custom_minimum_size = Vector2(172, 44)
+	preview_button.pressed.connect(_open_preview)
+	template_row.add_child(preview_button)
+	content.add_child(template_row)
+
+	var history_row := HBoxContainer.new()
+	history_row.name = "ResidentPromptHistoryRow"
+	history_row.add_theme_constant_override("separation", 10)
+	_history_option = OptionButton.new()
+	_history_option.name = "ResidentPromptHistoryOption"
+	_history_option.custom_minimum_size = Vector2(570, 42)
+	_history_option.add_item("历史版本（保存后自动记录，最多 20 个）")
+	_history_option.item_selected.connect(_on_history_selected)
+	history_row.add_child(_history_option)
+	_restore_history_button = Button.new()
+	_restore_history_button.name = "ResidentPromptRestoreHistoryButton"
+	_restore_history_button.text = "恢复所选版本"
+	_restore_history_button.custom_minimum_size = Vector2(172, 42)
+	_restore_history_button.disabled = true
+	_restore_history_button.pressed.connect(_restore_selected_history)
+	history_row.add_child(_restore_history_button)
+	content.add_child(history_row)
 
 	_prompt_edit = TextEdit.new()
 	_prompt_edit.name = "ResidentCustomPromptEdit"
-	_prompt_edit.custom_minimum_size = Vector2(710, 340)
+	_prompt_edit.custom_minimum_size = Vector2(750, 250)
 	_prompt_edit.placeholder_text = (
 		"例如：面对陌生人的请求时先判断风险；不要为了迎合而轻易改变立场；"
 		+ "对熟悉的人会更主动表达关心。"
@@ -140,6 +217,66 @@ func _build_overlay() -> void:
 	content.add_child(actions)
 
 
+func _build_preview_overlay() -> void:
+	if is_instance_valid(_preview_overlay):
+		return
+	_preview_overlay = ColorRect.new()
+	_preview_overlay.name = "ResidentPromptPreviewOverlay"
+	_preview_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_preview_overlay.color = Color(0.035, 0.03, 0.025, 0.84)
+	_preview_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_preview_overlay.z_index = 1100
+	_preview_overlay.visible = false
+	add_child(_preview_overlay)
+
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.offset_left = -500.0
+	panel.offset_top = -410.0
+	panel.offset_right = 500.0
+	panel.offset_bottom = 410.0
+	_preview_overlay.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_top", 22)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_bottom", 22)
+	panel.add_child(margin)
+
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 12)
+	margin.add_child(content)
+
+	var title := Label.new()
+	title.text = "Prompt 组合预览"
+	title.add_theme_font_size_override("font_size", 26)
+	content.add_child(title)
+
+	var hint := Label.new()
+	hint.text = "这里展示稳定 Prompt 层。世界状态、近期记忆和可执行动作会在每次真实请求时动态注入，因此以占位符显示。"
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	content.add_child(hint)
+
+	_preview_meta_label = Label.new()
+	_preview_meta_label.name = "ResidentPromptPreviewMeta"
+	content.add_child(_preview_meta_label)
+
+	_preview_text = TextEdit.new()
+	_preview_text.name = "ResidentPromptPreviewText"
+	_preview_text.custom_minimum_size = Vector2(930, 520)
+	_preview_text.editable = false
+	_preview_text.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	content.add_child(_preview_text)
+
+	var close_button := Button.new()
+	close_button.name = "ResidentPromptPreviewCloseButton"
+	close_button.text = "关闭预览"
+	close_button.custom_minimum_size = Vector2(140, 44)
+	close_button.pressed.connect(func() -> void: _preview_overlay.visible = false)
+	content.add_child(close_button)
+
+
 func _open_editor() -> void:
 	if not is_instance_valid(_overlay) or not is_instance_valid(_prompt_edit):
 		return
@@ -151,14 +288,144 @@ func _open_editor() -> void:
 		var profile := _profile_store.get_profile(resident_id)
 		_prompt_edit.text = String(profile.get("custom_prompt", ""))
 		_set_status("当前角色：%s" % resident_id)
+	_refresh_history_options(resident_id)
 	_update_counter()
 	_overlay.visible = true
 	_prompt_edit.grab_focus()
 
 
 func _close_editor() -> void:
+	if is_instance_valid(_preview_overlay):
+		_preview_overlay.visible = false
 	if is_instance_valid(_overlay):
 		_overlay.visible = false
+
+
+func _apply_selected_template() -> void:
+	if not is_instance_valid(_template_option) or not is_instance_valid(_prompt_edit):
+		return
+	var selected := _template_option.selected
+	if selected <= 0 or selected - 1 >= _templates.size():
+		_set_status("请先选择一个 Prompt 模板。")
+		return
+	var template := _templates[selected - 1] as Dictionary
+	var template_content := String(template.get("content", "")).strip_edges()
+	if template_content.is_empty():
+		return
+	var current := _prompt_edit.text.strip_edges()
+	_prompt_edit.text = (
+		template_content
+		if current.is_empty()
+		else current + "\n\n" + template_content
+	)
+	_prompt_edit.set_caret_line(maxi(0, _prompt_edit.get_line_count() - 1))
+	_update_counter()
+	_set_status("已插入模板：%s，可继续自由修改。" % String(template.get("label", "")))
+
+
+func _refresh_history_options(resident_id: String) -> void:
+	if not is_instance_valid(_history_option) or not is_instance_valid(_restore_history_button):
+		return
+	_history_option.clear()
+	_history_option.add_item("历史版本（保存后自动记录，最多 20 个）")
+	_restore_history_button.disabled = true
+	var normalized_id := resident_id.strip_edges()
+	if normalized_id.is_empty():
+		return
+	var history := _profile_store.get_history(normalized_id)
+	for reverse_offset: int in history.size():
+		var history_index := history.size() - 1 - reverse_offset
+		_history_option.add_item("Prompt 历史版本 %d（越靠上越新）" % (reverse_offset + 1))
+		_history_option.set_item_metadata(
+			_history_option.item_count - 1,
+			history_index,
+		)
+
+
+func _on_history_selected(index: int) -> void:
+	if is_instance_valid(_restore_history_button):
+		_restore_history_button.disabled = index <= 0
+
+
+func _restore_selected_history() -> void:
+	if (
+		not is_instance_valid(_history_option)
+		or not is_instance_valid(_prompt_edit)
+		or _history_option.selected <= 0
+	):
+		return
+	var resident_id := _current_resident_id()
+	if resident_id.is_empty():
+		_set_status("新角色尚未创建，没有可恢复的历史版本。")
+		return
+	var history := _profile_store.get_history(resident_id)
+	var history_index := int(_history_option.get_item_metadata(_history_option.selected))
+	if history_index < 0 or history_index >= history.size():
+		_set_status("所选历史版本已经失效，请重新打开窗口。")
+		return
+	var entry_value: Variant = history[history_index]
+	if typeof(entry_value) != TYPE_DICTIONARY:
+		_set_status("所选历史版本损坏。")
+		return
+	var historical_profile_value: Variant = (entry_value as Dictionary).get("profile", {})
+	if typeof(historical_profile_value) != TYPE_DICTIONARY:
+		_set_status("所选历史版本损坏。")
+		return
+	var historical_prompt := String(
+		(historical_profile_value as Dictionary).get("custom_prompt", ""),
+	).strip_edges()
+	var current_profile := _profile_store.get_profile(resident_id)
+	current_profile["custom_prompt"] = historical_prompt
+	var result := _profile_store.set_profile(resident_id, current_profile)
+	if not bool(result.get("ok", false)):
+		_set_status("历史版本恢复失败。")
+		return
+	_prompt_edit.text = historical_prompt
+	_update_counter()
+	_refresh_history_options(resident_id)
+	_set_status("已恢复所选 Prompt 历史版本；恢复前版本也已保留。")
+
+
+func _open_preview() -> void:
+	if (
+		not is_instance_valid(_preview_overlay)
+		or not is_instance_valid(_preview_text)
+		or not is_instance_valid(_prompt_edit)
+	):
+		return
+	var preview := _prompt_injector.build_preview(
+		_current_resident_id(),
+		_prompt_edit.text,
+		_current_profile_override(),
+	)
+	_preview_text.text = preview
+	_preview_text.set_caret_line(0)
+	_preview_text.set_caret_column(0)
+	_preview_meta_label.text = "稳定层字符数：%d；粗略 Token 估算：约 %d（仅调试参考）" % [
+		preview.length(),
+		PromptBudgetScript.estimate_tokens(preview),
+	]
+	_preview_overlay.visible = true
+
+
+func _current_profile_override() -> Dictionary:
+	if _page == null or not _page.has_method("current_view_model"):
+		return {}
+	var view_model := _page.call("current_view_model") as Dictionary
+	var data := view_model.get("data", {}) as Dictionary
+	var draft := data.get("draft", {}) as Dictionary
+	var result: Dictionary = {}
+	_copy_preview_field(result, "name", draft.get("name", ""))
+	_copy_preview_field(result, "personality", draft.get("personality", ""))
+	_copy_preview_field(result, "goals", draft.get("desire", ""))
+	_copy_preview_field(result, "speaking_style", draft.get("speech", ""))
+	return result
+
+
+func _copy_preview_field(target: Dictionary, field: String, value: Variant) -> void:
+	# A cleared field is still an explicit preview override. Preserve empty text
+	# so the preview cannot silently resurrect an older stored persona value.
+	target[field] = String(value).strip_edges()
 
 
 func _save_prompt() -> void:
@@ -195,6 +462,7 @@ func _persist_prompt(resident_id: String, value: String) -> bool:
 			)
 		)
 		return false
+	_refresh_history_options(normalized_id)
 	return true
 
 

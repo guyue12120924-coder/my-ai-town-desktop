@@ -4,6 +4,7 @@ extends RefCounted
 
 const AgentContractScript := preload("res://agent/AgentContract.gd")
 const ResidentPromptInjectorScript := preload("res://agent/ResidentPromptInjector.gd")
+const PromptBudgetScript := preload("res://agent/PromptBudgetManager.gd")
 
 var _model_provider: Object
 var _prompt_compiler: RefCounted
@@ -45,11 +46,13 @@ func request_decision(
 	retry_feedback: String = "",
 ) -> void:
 	var probe_lap_usec := Time.get_ticks_usec() if _probe_active() else 0
+	var bounded_memory_prompt := PromptBudgetScript.trim_memory_prompt(memory_prompt)
+	var bounded_retry_feedback := PromptBudgetScript.trim_retry_feedback(retry_feedback)
 	var model_request: Dictionary = _prompt_compiler.call(
 		"compile",
 		wake_packet,
-		memory_prompt,
-		retry_feedback,
+		bounded_memory_prompt,
+		bounded_retry_feedback,
 	)
 	if _probe_active():
 		var now_usec := Time.get_ticks_usec()

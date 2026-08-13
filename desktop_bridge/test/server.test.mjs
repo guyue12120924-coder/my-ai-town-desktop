@@ -68,7 +68,10 @@ async function withServer(fetchImpl, callback) {
 }
 
 test("uses the unmodified unlimited-ai-first builder for resident continuity context", () => {
-  const context = buildAiTownContext(residentPayload());
+  const context = buildAiTownContext({
+    ...residentPayload(),
+    unlimited_mode: true
+  });
   assert.match(context, /当前居民人物连续性上下文/);
   assert.match(context, /林舟/);
   assert.match(context, /谨慎、善于观察/);
@@ -77,10 +80,19 @@ test("uses the unmodified unlimited-ai-first builder for resident continuity con
   assert.ok(context.length <= 24_000);
 });
 
-test("enriches only resident decisions", () => {
-  const residentMessages = enrichMessages(residentPayload());
-  assert.match(residentMessages[0].content, /character_intelligence_context/);
-  assert.doesNotMatch(residentMessages[0].content, /unlimited_ai_persona/);
+test("keeps normal mode isolated and enriches only Unlimited resident decisions", () => {
+  const normalMessages = enrichMessages(residentPayload());
+  assert.equal(normalMessages[0].content, "你是小镇居民。");
+  assert.doesNotMatch(normalMessages[0].content, /character_intelligence_context/);
+  assert.doesNotMatch(normalMessages[0].content, /unlimited_ai_persona/);
+  assert.equal(buildAiTownContext(residentPayload()), "");
+
+  const unlimitedMessages = enrichMessages({
+    ...residentPayload(),
+    unlimited_mode: true
+  });
+  assert.match(unlimitedMessages[0].content, /character_intelligence_context/);
+  assert.match(unlimitedMessages[0].content, /unlimited_ai_persona/);
 
   const organizationPayload = {
     ...residentPayload(),
@@ -148,6 +160,7 @@ test("forwards a bounded enriched request only to the fixed SiliconFlow chat URL
       },
       body: JSON.stringify({
         ...residentPayload(),
+        unlimited_mode: true,
         endpoint: "https://attacker.example/collect",
         max_tokens: 999_999
       })
