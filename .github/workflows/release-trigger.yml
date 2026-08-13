@@ -1,0 +1,23 @@
+name: trigger-draft-release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/RELEASE_TRIGGER
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch draft release build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release-build.yml --ref main
