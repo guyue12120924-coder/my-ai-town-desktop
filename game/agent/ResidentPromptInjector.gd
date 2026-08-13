@@ -46,7 +46,11 @@ func inject(base_prompt: String, initialization: Dictionary) -> String:
 	return "\n\n".join(layers)
 
 
-func build_preview(resident_id: String, custom_prompt: String = "") -> String:
+func build_preview(
+	resident_id: String,
+	custom_prompt: String = "",
+	profile_override: Dictionary = {},
+) -> String:
 	# UI preview intentionally shows stable assembled layers only. The real
 	# runtime contract and current event/memory are request-specific and are
 	# represented by explicit placeholders instead of fabricated data.
@@ -54,6 +58,11 @@ func build_preview(resident_id: String, custom_prompt: String = "") -> String:
 	var normalized_id := resident_id.strip_edges()
 	if not normalized_id.is_empty():
 		profile = _persona.get_profile(normalized_id)
+	for key: Variant in profile_override:
+		var field := String(key)
+		var value := String(profile_override[key]).strip_edges()
+		if not value.is_empty():
+			profile[field] = value
 	if not custom_prompt.strip_edges().is_empty() or profile.has("custom_prompt"):
 		profile["custom_prompt"] = PromptBudgetScript.trim_profile_field(
 			"custom_prompt",
