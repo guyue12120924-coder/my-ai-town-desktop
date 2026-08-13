@@ -295,6 +295,36 @@
       "func": "request_quit_game",
       "call": "string:.call( \"prepare_departure_messages\", _quit_departure_id, 2, Callable(self, \"_on_quit_departure_messages_ready\").bind( departure_id, ), )",
       "reason": "正式与测试网关共享退出留言契约；绑定本次退出编号，用于忽略超时后迟到的异步回调，避免重复保存、返回主菜单或退出。"
+    },
+    {
+      "path": "game/agent/DecisionExecution.gd",
+      "func": "_inject_resident_persona",
+      "call": "string:.call( \"inject\", String(system_message.get(\"content\", \"\")), initialization, )",
+      "reason": "居民 Prompt 注入器作为可替换 RefCounted 契约保存在 DecisionExecution 中；该调用只固定派发 inject，不接受运行时方法名。"
+    },
+    {
+      "path": "game/agent/DecisionExecution.gd",
+      "func": "request_decision",
+      "call": "string:.call( \"compile\", wake_packet, bounded_memory_prompt, bounded_retry_feedback, )",
+      "reason": "DecisionExecution 的编译器允许 AgentPromptCompiler 与离线测试编译器共享同一鸭子类型契约；compile 方法名固定，并由构造阶段注入受控对象。"
+    },
+    {
+      "path": "game/ui/custom_resident_creator/ResidentCustomPromptEditor.gd",
+      "func": "_attach_to_page",
+      "call": "string:Callable(self, \"_on_page_intent_requested\")",
+      "reason": "Prompt 编辑器以独立子控件附着到角色创建页，通过固定 intent_requested 信号接收创建完成回调；Callable 仅绑定本控件固定方法。"
+    },
+    {
+      "path": "game/ui/custom_resident_creator/ResidentCustomPromptEditor.gd",
+      "func": "_current_profile_override",
+      "call": "string:.call(\"current_view_model\")",
+      "reason": "Prompt 编辑器保持为独立附着控件，只依赖父页公开 current_view_model 契约并在调用前 has_method 校验，避免与具体页面实现强耦合。"
+    },
+    {
+      "path": "game/ui/custom_resident_creator/ResidentCustomPromptEditor.gd",
+      "func": "_current_resident_id",
+      "call": "string:.call(\"current_view_model\")",
+      "reason": "同一独立附着控件通过已校验的父页 current_view_model 公共契约读取当前稳定 residentId；方法名固定。"
     }
   ]
 }
