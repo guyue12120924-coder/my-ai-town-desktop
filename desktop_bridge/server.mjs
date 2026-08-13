@@ -69,6 +69,11 @@ function renderCurrentState(wakePacket) {
 }
 
 export function buildAiTownContext(payload) {
+  // Keep normal AI Town mode byte-for-byte free of the Unlimited AI context
+  // adapter. The vendor context builder is an opt-in enhancement and must not
+  // silently influence resident decisions when the player disables the mode.
+  if (payload?.unlimited_mode !== true) return "";
+
   const initialization = objectValue(payload.initialization);
   const me = objectValue(initialization.me);
   const attributes = objectValue(me.attributes);
