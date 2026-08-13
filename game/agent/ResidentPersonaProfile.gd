@@ -23,10 +23,16 @@ const PROFILE_FIELDS: Array[String] = [
 	"relationship_notes",
 ]
 
+# File modification timestamps can have coarse resolution. A process-local
+# revision guarantees that a Prompt saved by the UI is visible immediately to
+# already-instantiated decision executors in the same desktop process.
+static var _process_revision := 0
+
 var _bundled_profiles: Dictionary = {}
 var _user_profiles: Dictionary = {}
 var _user_history: Dictionary = {}
 var _user_modified_time := -1
+var _seen_process_revision := -1
 
 
 func _init() -> void:
@@ -287,7 +293,10 @@ func _refresh_user_profiles_if_needed() -> void:
 	var modified_time := -1
 	if FileAccess.file_exists(USER_PROFILE_PATH):
 		modified_time = int(FileAccess.get_modified_time(USER_PROFILE_PATH))
-	if modified_time != _user_modified_time:
+	if (
+		modified_time != _user_modified_time
+		or _seen_process_revision != _process_revision
+	):
 		_reload_user_profiles()
 
 
@@ -299,6 +308,7 @@ func _reload_user_profiles() -> void:
 		if FileAccess.file_exists(USER_PROFILE_PATH)
 		else -1
 	)
+	_seen_process_revision = _process_revision
 
 
 func _save_user_profiles() -> Dictionary:
@@ -311,5 +321,7 @@ func _save_user_profiles() -> Dictionary:
 		"history": _user_history,
 	}, "  "))
 	file.close()
+	_process_revision += 1
+	_seen_process_revision = _process_revision
 	_user_modified_time = int(FileAccess.get_modified_time(USER_PROFILE_PATH))
 	return {"ok": true}
