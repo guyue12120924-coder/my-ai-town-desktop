@@ -90,11 +90,18 @@ func set_profile(resident_id: String, profile: Dictionary) -> Dictionary:
 	var next := _sanitize_profile(profile)
 	if previous == next:
 		return {"ok": true, "changed": false}
+	var profiles_before := _user_profiles.duplicate(true)
+	var history_before := _user_history.duplicate(true)
 	if not previous.is_empty():
 		_append_history_snapshot(normalized_id, previous)
 	_user_profiles[normalized_id] = next
 	var result := _save_user_profiles()
-	result["changed"] = bool(result.get("ok", false))
+	if not bool(result.get("ok", false)):
+		_user_profiles = profiles_before
+		_user_history = history_before
+		result["changed"] = false
+		return result
+	result["changed"] = true
 	return result
 
 
@@ -120,9 +127,20 @@ func remove_profile(resident_id: String) -> Dictionary:
 		return {"ok": false, "errors": ["居民编号不能为空"]}
 	# Avoid clobbering another live profile instance's newer write.
 	_refresh_user_profiles_if_needed()
+	if not _user_profiles.has(normalized_id) and not _user_history.has(normalized_id):
+		return {"ok": true, "changed": false}
+	var profiles_before := _user_profiles.duplicate(true)
+	var history_before := _user_history.duplicate(true)
 	_user_profiles.erase(normalized_id)
 	_user_history.erase(normalized_id)
-	return _save_user_profiles()
+	var result := _save_user_profiles()
+	if not bool(result.get("ok", false)):
+		_user_profiles = profiles_before
+		_user_history = history_before
+		result["changed"] = false
+		return result
+	result["changed"] = true
+	return result
 
 
 func build_prompt(
