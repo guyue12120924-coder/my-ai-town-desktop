@@ -9,7 +9,8 @@ const PromptBudgetScript := preload("res://agent/PromptBudgetManager.gd")
 const PromptPolicyScript := preload("res://agent/ResidentPromptPolicy.gd")
 const BUNDLED_PROFILE_PATH := "res://residents/resident_profiles.json"
 const USER_PROFILE_PATH := "user://resident_profiles.json"
-const PROFILE_VERSION := 2
+const PROFILE_VERSION := 3
+const PROFILE_HISTORY_LIMIT := 20
 const PROFILE_FIELDS: Array[String] = [
 	"name",
 	"personality",
@@ -24,6 +25,7 @@ const PROFILE_FIELDS: Array[String] = [
 
 var _bundled_profiles: Dictionary = {}
 var _user_profiles: Dictionary = {}
+var _user_history: Dictionary = {}
 var _user_modified_time := -1
 
 
@@ -62,12 +64,47 @@ func get_all_profiles() -> Dictionary:
 	return result
 
 
+func get_history(resident_id: String) -> Array:
+	_refresh_user_profiles_if_needed()
+	var normalized_id := resident_id.strip_edges()
+	if normalized_id.is_empty():
+		return []
+	var history_value: Variant = _user_history.get(normalized_id, [])
+	if typeof(history_value) != TYPE_ARRAY:
+		return []
+	return (history_value as Array).duplicate(true)
+
+
 func set_profile(resident_id: String, profile: Dictionary) -> Dictionary:
 	var normalized_id := resident_id.strip_edges()
 	if normalized_id.is_empty():
 		return {"ok": false, "errors": ["居民编号不能为空"]}
-	_user_profiles[normalized_id] = _sanitize_profile(profile)
-	return _save_user_profiles()
+	var previous := get_profile(normalized_id)
+	var next := _sanitize_profile(profile)
+	if previous == next:
+		return {"ok": true, "changed": false}
+	if not previous.is_empty():
+		_append_history_snapshot(normalized_id, previous)
+	_user_profiles[normalized_id] = next
+	var result := _save_user_profiles()
+	result["changed"] = bool(result.get("ok", false))
+	return result
+
+
+func restore_history(resident_id: String, history_index: int) -> Dictionary:
+	var normalized_id := resident_id.strip_edges()
+	if normalized_id.is_empty():
+		return {"ok": false, "errors": ["居民编号不能为空"]}
+	var history := get_history(normalized_id)
+	if history_index < 0 or history_index >= history.size():
+		return {"ok": false, "errors": ["角色 Prompt 历史版本不存在"]}
+	var entry_value: Variant = history[history_index]
+	if typeof(entry_value) != TYPE_DICTIONARY:
+		return {"ok": false, "errors": ["角色 Prompt 历史版本损坏"]}
+	var profile_value: Variant = (entry_value as Dictionary).get("profile", {})
+	if typeof(profile_value) != TYPE_DICTIONARY:
+		return {"ok": false, "errors": ["角色 Prompt 历史版本损坏"]}
+	return set_profile(normalized_id, profile_value as Dictionary)
 
 
 func remove_profile(resident_id: String) -> Dictionary:
@@ -75,6 +112,7 @@ func remove_profile(resident_id: String) -> Dictionary:
 	if normalized_id.is_empty():
 		return {"ok": false, "errors": ["居民编号不能为空"]}
 	_user_profiles.erase(normalized_id)
+	_user_history.erase(normalized_id)
 	return _save_user_profiles()
 
 
@@ -203,7 +241,37 @@ func _relationship_value_to_text(value: Variant) -> String:
 	return PromptBudgetScript.trim_profile_field("relationship_notes", encoded)
 
 
+func _append_history_snapshot(resident_id: String, profile: Dictionary) -> void:
+	var history: Array = []
+	var existing: Variant = _user_history.get(resident_id, [])
+	if typeof(existing) == TYPE_ARRAY:
+		history = (existing as Array).duplicate(true)
+	history.append({
+		"saved_at_unix": int(Time.get_unix_time_from_system()),
+		"profile": _sanitize_profile(profile),
+	})
+	while history.size() > PROFILE_HISTORY_LIMIT:
+		history.remove_at(0)
+	_user_history[resident_id] = history
+
+
 func _load_profiles(path: String) -> Dictionary:
+	var document := _load_document(path)
+	var residents: Variant = document.get("residents", {})
+	if typeof(residents) != TYPE_DICTIONARY:
+		return {}
+	return (residents as Dictionary).duplicate(true)
+
+
+func _load_history(path: String) -> Dictionary:
+	var document := _load_document(path)
+	var history: Variant = document.get("history", {})
+	if typeof(history) != TYPE_DICTIONARY:
+		return {}
+	return (history as Dictionary).duplicate(true)
+
+
+func _load_document(path: String) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return {}
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -212,10 +280,7 @@ func _load_profiles(path: String) -> Dictionary:
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return {}
-	var residents: Variant = (parsed as Dictionary).get("residents", {})
-	if typeof(residents) != TYPE_DICTIONARY:
-		return {}
-	return (residents as Dictionary).duplicate(true)
+	return (parsed as Dictionary).duplicate(true)
 
 
 func _refresh_user_profiles_if_needed() -> void:
@@ -228,6 +293,7 @@ func _refresh_user_profiles_if_needed() -> void:
 
 func _reload_user_profiles() -> void:
 	_user_profiles = _load_profiles(USER_PROFILE_PATH)
+	_user_history = _load_history(USER_PROFILE_PATH)
 	_user_modified_time = (
 		int(FileAccess.get_modified_time(USER_PROFILE_PATH))
 		if FileAccess.file_exists(USER_PROFILE_PATH)
@@ -242,6 +308,7 @@ func _save_user_profiles() -> Dictionary:
 	file.store_string(JSON.stringify({
 		"version": PROFILE_VERSION,
 		"residents": _user_profiles,
+		"history": _user_history,
 	}, "  "))
 	file.close()
 	_user_modified_time = int(FileAccess.get_modified_time(USER_PROFILE_PATH))
