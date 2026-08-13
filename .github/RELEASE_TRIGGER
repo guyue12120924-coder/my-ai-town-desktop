@@ -1,4 +1,4 @@
 version=0.1.0-beta.4
-source_main=d884f2749a3abe68af9e835571c2627186c9de35
-reason=post-PR4 Windows release validation after guard annotations
-attempt=3
+source_main=f1167d9f68ab1d3811fae1f5ac271868656d6d53
+reason=post-PR4 Windows release validation after zero-reference schema fix
+attempt=4
