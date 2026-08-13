@@ -45,13 +45,71 @@ func _run() -> void:
 		true,
 		false,
 	) as Button
+	var template_option := page.find_child(
+		"ResidentPromptTemplateOption",
+		true,
+		false,
+	) as OptionButton
+	var insert_template_button := page.find_child(
+		"ResidentPromptInsertTemplateButton",
+		true,
+		false,
+	) as Button
+	var preview_button := page.find_child(
+		"ResidentPromptPreviewButton",
+		true,
+		false,
+	) as Button
 	_expect(prompt_edit != null, "角色 Prompt 弹窗包含多行编辑框")
 	_expect(save_button != null, "角色 Prompt 弹窗包含保存按钮")
-	if prompt_edit == null or save_button == null:
+	_expect(template_option != null, "角色 Prompt 弹窗提供模板选择")
+	_expect(insert_template_button != null, "角色 Prompt 弹窗提供模板插入按钮")
+	_expect(preview_button != null, "角色 Prompt 弹窗提供组合预览按钮")
+	if (
+		prompt_edit == null
+		or save_button == null
+		or template_option == null
+		or insert_template_button == null
+		or preview_button == null
+	):
 		_finish(page, store)
 		return
 
+	_expect(template_option.item_count > 1, "内置 Prompt 模板已成功加载")
+	if template_option.item_count > 1:
+		template_option.select(1)
+		insert_template_button.pressed.emit()
+		await process_frame
+		_expect(not prompt_edit.text.strip_edges().is_empty(), "选择模板后内容写入编辑框")
+
 	prompt_edit.text = "只相信亲眼确认的事实；面对陌生人先观察，再决定是否提供帮助。"
+	preview_button.pressed.emit()
+	await process_frame
+	var preview_overlay := page.find_child(
+		"ResidentPromptPreviewOverlay",
+		true,
+		false,
+	) as ColorRect
+	var preview_text := page.find_child(
+		"ResidentPromptPreviewText",
+		true,
+		false,
+	) as TextEdit
+	_expect(preview_overlay != null and preview_overlay.visible, "组合 Prompt 预览可以打开")
+	_expect(preview_text != null, "组合 Prompt 预览包含只读文本")
+	if preview_text != null:
+		_expect(preview_text.text.contains("<resident_prompt_policy>"), "预览显示角色优先级保护层")
+		_expect(preview_text.text.contains("面对陌生人先观察"), "预览显示当前未保存角色 Prompt")
+		_expect(preview_text.text.contains("[运行时注入：世界事实"), "动态世界上下文使用明确占位符")
+	var close_preview := page.find_child(
+		"ResidentPromptPreviewCloseButton",
+		true,
+		false,
+	) as Button
+	if close_preview != null:
+		close_preview.pressed.emit()
+		await process_frame
+
 	save_button.pressed.emit()
 	await process_frame
 
