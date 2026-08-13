@@ -117,6 +117,8 @@ func remove_profile(resident_id: String) -> Dictionary:
 	var normalized_id := resident_id.strip_edges()
 	if normalized_id.is_empty():
 		return {"ok": false, "errors": ["居民编号不能为空"]}
+	# Avoid clobbering another live profile instance's newer write.
+	_refresh_user_profiles_if_needed()
 	_user_profiles.erase(normalized_id)
 	_user_history.erase(normalized_id)
 	return _save_user_profiles()
@@ -129,14 +131,17 @@ func build_prompt(
 	var profile := _profile_from_initialization(initialization)
 	var stored_profile := get_profile(resident_id)
 	for field: String in PROFILE_FIELDS:
-		if stored_profile.has(field) and not String(stored_profile[field]).strip_edges().is_empty():
+		# Presence is authoritative even when the stored value is empty. This lets
+		# a user explicitly clear an initialization/bundled Prompt instead of the
+		# previous value silently reappearing on the next model request.
+		if stored_profile.has(field):
 			profile[field] = stored_profile[field]
 	return build_prompt_from_profile(profile)
 
 
 func build_prompt_from_profile(profile: Dictionary) -> String:
 	var sanitized := _sanitize_profile(profile)
-	if sanitized.is_empty():
+	if not _profile_has_content(sanitized):
 		return ""
 
 	var lines: Array[String] = [
@@ -155,6 +160,13 @@ func build_prompt_from_profile(profile: Dictionary) -> String:
 	_append_field(lines, "长期记忆摘要", sanitized, "long_term_memory")
 	lines.append("</resident_persona>")
 	return "\n".join(lines)
+
+
+func _profile_has_content(profile: Dictionary) -> bool:
+	for field: String in PROFILE_FIELDS:
+		if not String(profile.get(field, "")).strip_edges().is_empty():
+			return true
+	return false
 
 
 func _profile_from_initialization(initialization: Dictionary) -> Dictionary:
