@@ -1,3 +1,4 @@
 version=0.1.0-beta.4
-source_main=6d778aded274570bb2f59dedd5aae5aef0000e56
+source_main=fcd83e4e0b909a4b80f56f1e117a99e83af08074
 reason=post-PR4 Windows release validation
+attempt=2
