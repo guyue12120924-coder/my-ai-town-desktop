@@ -9,6 +9,7 @@ const PromptBudgetScript := preload("res://agent/PromptBudgetManager.gd")
 const PromptPolicyScript := preload("res://agent/ResidentPromptPolicy.gd")
 const BUNDLED_PROFILE_PATH := "res://residents/resident_profiles.json"
 const USER_PROFILE_PATH := "user://resident_profiles.json"
+const USER_PROFILE_TEMP_PATH := "user://resident_profiles.json.tmp"
 const PROFILE_VERSION := 3
 const PROFILE_HISTORY_LIMIT := 20
 const PROFILE_FIELDS: Array[String] = [
@@ -324,15 +325,27 @@ func _reload_user_profiles() -> void:
 
 
 func _save_user_profiles() -> Dictionary:
-	var file := FileAccess.open(USER_PROFILE_PATH, FileAccess.WRITE)
-	if file == null:
-		return {"ok": false, "errors": ["无法保存居民角色卡"]}
-	file.store_string(JSON.stringify({
+	var serialized := JSON.stringify({
 		"version": PROFILE_VERSION,
 		"residents": _user_profiles,
 		"history": _user_history,
-	}, "  "))
+	}, "  ")
+	var file := FileAccess.open(USER_PROFILE_TEMP_PATH, FileAccess.WRITE)
+	if file == null:
+		return {"ok": false, "errors": ["无法创建居民角色卡临时文件"]}
+	if not file.store_string(serialized):
+		file.close()
+		DirAccess.remove_absolute(USER_PROFILE_TEMP_PATH)
+		return {"ok": false, "errors": ["无法写入居民角色卡临时文件"]}
+	file.flush()
 	file.close()
+	var rename_error := DirAccess.rename_absolute(
+		USER_PROFILE_TEMP_PATH,
+		USER_PROFILE_PATH,
+	)
+	if rename_error != OK:
+		DirAccess.remove_absolute(USER_PROFILE_TEMP_PATH)
+		return {"ok": false, "errors": ["无法替换居民角色卡文件"]}
 	_process_revision += 1
 	_seen_process_revision = _process_revision
 	_user_modified_time = int(FileAccess.get_modified_time(USER_PROFILE_PATH))
