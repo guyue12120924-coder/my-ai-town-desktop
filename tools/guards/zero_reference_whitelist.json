@@ -1,5 +1,14 @@
 {
  "version": 1,
  "note": "无静态引用但合法的项：动态加载、编辑器工具、手工预览。每项记 purpose/consumer/owner。",
- "entries": []
+ "entries": [
+  {
+   "kind": "class",
+   "name": "AgentPromptBudgetManager",
+   "path": "game/agent/PromptBudgetManager.gd",
+   "purpose": "为居民 Prompt、记忆和重试反馈提供统一字符预算与调试 Token 粗估。该脚本通过 preload 路径作为 GDScript 常量调用，零引用扫描器只统计 class_name 静态符号，因此会误判为未消费。",
+   "consumer": "DecisionExecution.gd、ResidentPersonaProfile.gd、ResidentPromptInjector.gd、ResidentCustomPromptEditor.gd 及对应离线测试",
+   "owner": "AI Town agent prompt runtime"
+  }
+ ]
 }
