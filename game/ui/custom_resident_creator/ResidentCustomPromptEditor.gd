@@ -19,6 +19,8 @@ var _prompt_edit: TextEdit
 var _status_label: Label
 var _counter_label: Label
 var _template_option: OptionButton
+var _history_option: OptionButton
+var _restore_history_button: Button
 var _preview_overlay: ColorRect
 var _preview_text: TextEdit
 var _preview_meta_label: Label
@@ -93,9 +95,9 @@ func _build_overlay() -> void:
 	panel.name = "ResidentCustomPromptPanel"
 	panel.set_anchors_preset(Control.PRESET_CENTER)
 	panel.offset_left = -410.0
-	panel.offset_top = -350.0
+	panel.offset_top = -380.0
 	panel.offset_right = 410.0
-	panel.offset_bottom = 350.0
+	panel.offset_bottom = 380.0
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	_overlay.add_child(panel)
 
@@ -107,7 +109,7 @@ func _build_overlay() -> void:
 	panel.add_child(margin)
 
 	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", 12)
+	content.add_theme_constant_override("separation", 10)
 	margin.add_child(content)
 
 	var title := Label.new()
@@ -155,9 +157,27 @@ func _build_overlay() -> void:
 	template_row.add_child(preview_button)
 	content.add_child(template_row)
 
+	var history_row := HBoxContainer.new()
+	history_row.name = "ResidentPromptHistoryRow"
+	history_row.add_theme_constant_override("separation", 10)
+	_history_option = OptionButton.new()
+	_history_option.name = "ResidentPromptHistoryOption"
+	_history_option.custom_minimum_size = Vector2(570, 42)
+	_history_option.add_item("历史版本（保存后自动记录，最多 20 个）")
+	_history_option.item_selected.connect(_on_history_selected)
+	history_row.add_child(_history_option)
+	_restore_history_button = Button.new()
+	_restore_history_button.name = "ResidentPromptRestoreHistoryButton"
+	_restore_history_button.text = "恢复所选版本"
+	_restore_history_button.custom_minimum_size = Vector2(172, 42)
+	_restore_history_button.disabled = true
+	_restore_history_button.pressed.connect(_restore_selected_history)
+	history_row.add_child(_restore_history_button)
+	content.add_child(history_row)
+
 	_prompt_edit = TextEdit.new()
 	_prompt_edit.name = "ResidentCustomPromptEdit"
-	_prompt_edit.custom_minimum_size = Vector2(750, 300)
+	_prompt_edit.custom_minimum_size = Vector2(750, 250)
 	_prompt_edit.placeholder_text = (
 		"例如：面对陌生人的请求时先判断风险；不要为了迎合而轻易改变立场；"
 		+ "对熟悉的人会更主动表达关心。"
@@ -266,6 +286,7 @@ func _open_editor() -> void:
 		var profile := _profile_store.get_profile(resident_id)
 		_prompt_edit.text = String(profile.get("custom_prompt", ""))
 		_set_status("当前角色：%s" % resident_id)
+	_refresh_history_options(resident_id)
 	_update_counter()
 	_overlay.visible = true
 	_prompt_edit.grab_focus()
@@ -298,6 +319,69 @@ func _apply_selected_template() -> void:
 	_prompt_edit.set_caret_line(maxi(0, _prompt_edit.get_line_count() - 1))
 	_update_counter()
 	_set_status("已插入模板：%s，可继续自由修改。" % String(template.get("label", "")))
+
+
+func _refresh_history_options(resident_id: String) -> void:
+	if not is_instance_valid(_history_option) or not is_instance_valid(_restore_history_button):
+		return
+	_history_option.clear()
+	_history_option.add_item("历史版本（保存后自动记录，最多 20 个）")
+	_restore_history_button.disabled = true
+	var normalized_id := resident_id.strip_edges()
+	if normalized_id.is_empty():
+		return
+	var history := _profile_store.get_history(normalized_id)
+	for reverse_offset: int in history.size():
+		var history_index := history.size() - 1 - reverse_offset
+		_history_option.add_item("Prompt 历史版本 %d（越靠上越新）" % (reverse_offset + 1))
+		_history_option.set_item_metadata(
+			_history_option.item_count - 1,
+			history_index,
+		)
+
+
+func _on_history_selected(index: int) -> void:
+	if is_instance_valid(_restore_history_button):
+		_restore_history_button.disabled = index <= 0
+
+
+func _restore_selected_history() -> void:
+	if (
+		not is_instance_valid(_history_option)
+		or not is_instance_valid(_prompt_edit)
+		or _history_option.selected <= 0
+	):
+		return
+	var resident_id := _current_resident_id()
+	if resident_id.is_empty():
+		_set_status("新角色尚未创建，没有可恢复的历史版本。")
+		return
+	var history := _profile_store.get_history(resident_id)
+	var history_index := int(_history_option.get_item_metadata(_history_option.selected))
+	if history_index < 0 or history_index >= history.size():
+		_set_status("所选历史版本已经失效，请重新打开窗口。")
+		return
+	var entry_value: Variant = history[history_index]
+	if typeof(entry_value) != TYPE_DICTIONARY:
+		_set_status("所选历史版本损坏。")
+		return
+	var historical_profile_value: Variant = (entry_value as Dictionary).get("profile", {})
+	if typeof(historical_profile_value) != TYPE_DICTIONARY:
+		_set_status("所选历史版本损坏。")
+		return
+	var historical_prompt := String(
+		(historical_profile_value as Dictionary).get("custom_prompt", ""),
+	).strip_edges()
+	var current_profile := _profile_store.get_profile(resident_id)
+	current_profile["custom_prompt"] = historical_prompt
+	var result := _profile_store.set_profile(resident_id, current_profile)
+	if not bool(result.get("ok", false)):
+		_set_status("历史版本恢复失败。")
+		return
+	_prompt_edit.text = historical_prompt
+	_update_counter()
+	_refresh_history_options(resident_id)
+	_set_status("已恢复所选 Prompt 历史版本；恢复前版本也已保留。")
 
 
 func _open_preview() -> void:
@@ -376,6 +460,7 @@ func _persist_prompt(resident_id: String, value: String) -> bool:
 			)
 		)
 		return false
+	_refresh_history_options(normalized_id)
 	return true
 
 
