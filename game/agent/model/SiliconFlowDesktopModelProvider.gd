@@ -128,7 +128,14 @@ func _build_request_body(model_request: Dictionary) -> Dictionary:
 		body["unlimited_continuity_analysis"] = bool(
 			_config.get("unlimited_continuity_analysis", true),
 		)
-		var fallback_value: Variant = _config.get("fallback_models", [])
+		# Provider settings already preserve SiliconFlow api_models in the order
+		# the player added/discovered them. Use that list as the fallback chain
+		# when no explicit fallback_models override is supplied; otherwise the UI
+		# can say "自动切换" is enabled while the bridge only receives one model.
+		var fallback_value: Variant = _config.get(
+			"fallback_models",
+			_config.get("api_models", []),
+		)
 		body["fallback_models"] = (
 			(fallback_value as Array).duplicate()
 			if fallback_value is Array
