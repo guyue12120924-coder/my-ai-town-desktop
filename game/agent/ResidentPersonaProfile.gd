@@ -10,6 +10,7 @@ const PromptPolicyScript := preload("res://agent/ResidentPromptPolicy.gd")
 const BUNDLED_PROFILE_PATH := "res://residents/resident_profiles.json"
 const USER_PROFILE_PATH := "user://resident_profiles.json"
 const USER_PROFILE_TEMP_PATH := "user://resident_profiles.json.tmp"
+const USER_PROFILE_BACKUP_PATH := "user://resident_profiles.json.bak"
 const PROFILE_VERSION := 3
 const PROFILE_HISTORY_LIMIT := 20
 const PROFILE_FIELDS: Array[String] = [
@@ -320,6 +321,16 @@ func _load_document(path: String) -> Dictionary:
 	return (parsed as Dictionary).duplicate(true)
 
 
+func _is_profile_document_valid(path: String) -> bool:
+	if not FileAccess.file_exists(path):
+		return false
+	var document := _load_document(path)
+	return (
+		not document.is_empty()
+		and typeof(document.get("residents", null)) == TYPE_DICTIONARY
+	)
+
+
 func _refresh_user_profiles_if_needed() -> void:
 	var modified_time := -1
 	if FileAccess.file_exists(USER_PROFILE_PATH):
@@ -332,6 +343,7 @@ func _refresh_user_profiles_if_needed() -> void:
 
 
 func _reload_user_profiles() -> void:
+	_recover_user_profile_file_if_needed()
 	_user_profiles = _load_profiles(USER_PROFILE_PATH)
 	_user_history = _load_history(USER_PROFILE_PATH)
 	_user_modified_time = (
@@ -340,6 +352,34 @@ func _reload_user_profiles() -> void:
 		else -1
 	)
 	_seen_process_revision = _process_revision
+
+
+func _recover_user_profile_file_if_needed() -> void:
+	var final_valid := _is_profile_document_valid(USER_PROFILE_PATH)
+	var backup_valid := _is_profile_document_valid(USER_PROFILE_BACKUP_PATH)
+	var temp_valid := _is_profile_document_valid(USER_PROFILE_TEMP_PATH)
+
+	if final_valid:
+		_remove_file_if_exists(USER_PROFILE_BACKUP_PATH)
+		_remove_file_if_exists(USER_PROFILE_TEMP_PATH)
+		return
+
+	if backup_valid:
+		_remove_file_if_exists(USER_PROFILE_PATH)
+		if _rename_file(USER_PROFILE_BACKUP_PATH, USER_PROFILE_PATH) == OK:
+			_remove_file_if_exists(USER_PROFILE_TEMP_PATH)
+		return
+
+	if temp_valid:
+		_remove_file_if_exists(USER_PROFILE_PATH)
+		if _rename_file(USER_PROFILE_TEMP_PATH, USER_PROFILE_PATH) == OK:
+			_remove_file_if_exists(USER_PROFILE_BACKUP_PATH)
+		return
+
+	# No valid replacement exists. A stale temp file is never useful after this
+	# point; leave a corrupt final/backup in place for manual diagnosis instead
+	# of silently destroying the only evidence of the failed write.
+	_remove_file_if_exists(USER_PROFILE_TEMP_PATH)
 
 
 func _save_user_profiles() -> Dictionary:
@@ -353,18 +393,56 @@ func _save_user_profiles() -> Dictionary:
 		return {"ok": false, "errors": ["无法创建居民角色卡临时文件"]}
 	if not file.store_string(serialized):
 		file.close()
-		DirAccess.remove_absolute(USER_PROFILE_TEMP_PATH)
+		_remove_file_if_exists(USER_PROFILE_TEMP_PATH)
 		return {"ok": false, "errors": ["无法写入居民角色卡临时文件"]}
 	file.flush()
 	file.close()
-	var rename_error := DirAccess.rename_absolute(
+	if not _is_profile_document_valid(USER_PROFILE_TEMP_PATH):
+		_remove_file_if_exists(USER_PROFILE_TEMP_PATH)
+		return {"ok": false, "errors": ["居民角色卡临时文件校验失败"]}
+
+	_remove_file_if_exists(USER_PROFILE_BACKUP_PATH)
+	var had_existing := FileAccess.file_exists(USER_PROFILE_PATH)
+	if had_existing:
+		var backup_error := _rename_file(
+			USER_PROFILE_PATH,
+			USER_PROFILE_BACKUP_PATH,
+		)
+		if backup_error != OK:
+			_remove_file_if_exists(USER_PROFILE_TEMP_PATH)
+			return {"ok": false, "errors": ["无法备份旧居民角色卡"]}
+
+	var replace_error := _rename_file(
 		USER_PROFILE_TEMP_PATH,
 		USER_PROFILE_PATH,
 	)
-	if rename_error != OK:
-		DirAccess.remove_absolute(USER_PROFILE_TEMP_PATH)
+	if replace_error != OK:
+		_remove_file_if_exists(USER_PROFILE_TEMP_PATH)
+		if had_existing and FileAccess.file_exists(USER_PROFILE_BACKUP_PATH):
+			_rename_file(USER_PROFILE_BACKUP_PATH, USER_PROFILE_PATH)
 		return {"ok": false, "errors": ["无法替换居民角色卡文件"]}
+
+	if not _is_profile_document_valid(USER_PROFILE_PATH):
+		_remove_file_if_exists(USER_PROFILE_PATH)
+		if had_existing and FileAccess.file_exists(USER_PROFILE_BACKUP_PATH):
+			_rename_file(USER_PROFILE_BACKUP_PATH, USER_PROFILE_PATH)
+		return {"ok": false, "errors": ["居民角色卡替换后校验失败"]}
+
+	_remove_file_if_exists(USER_PROFILE_BACKUP_PATH)
 	_process_revision += 1
 	_seen_process_revision = _process_revision
 	_user_modified_time = int(FileAccess.get_modified_time(USER_PROFILE_PATH))
 	return {"ok": true}
+
+
+func _rename_file(from_path: String, to_path: String) -> Error:
+	return DirAccess.rename_absolute(
+		ProjectSettings.globalize_path(from_path),
+		ProjectSettings.globalize_path(to_path),
+	)
+
+
+func _remove_file_if_exists(path: String) -> void:
+	if not FileAccess.file_exists(path):
+		return
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
