@@ -58,11 +58,15 @@ func build_preview(
 	var normalized_id := resident_id.strip_edges()
 	if not normalized_id.is_empty():
 		profile = _persona.get_profile(normalized_id)
+	# Explicit preview overrides are authoritative even when empty. This lets
+	# the preview reflect a field the player has intentionally cleared instead
+	# of silently falling back to an older stored value.
 	for key: Variant in profile_override:
 		var field := String(key)
-		var value := String(profile_override[key]).strip_edges()
-		if not value.is_empty():
-			profile[field] = value
+		profile[field] = PromptBudgetScript.trim_profile_field(
+			field,
+			String(profile_override[key]),
+		)
 	if not custom_prompt.strip_edges().is_empty() or profile.has("custom_prompt"):
 		profile["custom_prompt"] = PromptBudgetScript.trim_profile_field(
 			"custom_prompt",
