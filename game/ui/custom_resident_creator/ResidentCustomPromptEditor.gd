@@ -36,9 +36,11 @@ func _ready() -> void:
 	call_deferred("_attach_to_page")
 
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
 	if not event.is_action_pressed("ui_cancel"):
 		return
+	# Consume Escape before the parent page's _unhandled_input() can interpret it
+	# as "leave the resident screen" while a modal Prompt layer is open.
 	if is_instance_valid(_preview_overlay) and _preview_overlay.visible:
 		_preview_overlay.visible = false
 		get_viewport().set_input_as_handled()
@@ -262,7 +264,7 @@ func _build_preview_overlay() -> void:
 
 	_preview_text = TextEdit.new()
 	_preview_text.name = "ResidentPromptPreviewText"
-	_preview_text.custom_minimum_size = Vector2(930, 650)
+	_preview_text.custom_minimum_size = Vector2(930, 520)
 	_preview_text.editable = false
 	_preview_text.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	content.add_child(_preview_text)
