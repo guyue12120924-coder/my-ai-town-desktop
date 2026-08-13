@@ -60,20 +60,38 @@ func _run() -> void:
 		true,
 		false,
 	) as Button
+	var history_option := page.find_child(
+		"ResidentPromptHistoryOption",
+		true,
+		false,
+	) as OptionButton
+	var restore_history_button := page.find_child(
+		"ResidentPromptRestoreHistoryButton",
+		true,
+		false,
+	) as Button
 	_expect(prompt_edit != null, "角色 Prompt 弹窗包含多行编辑框")
 	_expect(save_button != null, "角色 Prompt 弹窗包含保存按钮")
 	_expect(template_option != null, "角色 Prompt 弹窗提供模板选择")
 	_expect(insert_template_button != null, "角色 Prompt 弹窗提供模板插入按钮")
 	_expect(preview_button != null, "角色 Prompt 弹窗提供组合预览按钮")
+	_expect(history_option != null, "角色 Prompt 弹窗提供历史版本选择")
+	_expect(restore_history_button != null, "角色 Prompt 弹窗提供历史恢复按钮")
 	if (
 		prompt_edit == null
 		or save_button == null
 		or template_option == null
 		or insert_template_button == null
 		or preview_button == null
+		or history_option == null
+		or restore_history_button == null
 	):
 		_finish(page, store)
 		return
+	_expect(
+		restore_history_button.disabled,
+		"新角色尚无历史时恢复按钮保持禁用",
+	)
 
 	_expect(template_option.item_count > 1, "内置 Prompt 模板已成功加载")
 	if template_option.item_count > 1:
