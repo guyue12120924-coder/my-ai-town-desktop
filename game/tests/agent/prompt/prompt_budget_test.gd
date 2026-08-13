@@ -68,6 +68,21 @@ func _initialize() -> void:
 		"重试反馈截断会留下明确标记",
 	)
 
+	var chinese_prompt := "保持角色核心性格稳定，并根据当前事实做出决定。"
+	var english_prompt := "Keep the resident consistent with current world facts."
+	_expect(
+		PromptBudgetScript.estimate_tokens(chinese_prompt) >= chinese_prompt.length() - 2,
+		"中文 Prompt 的 Token 粗估不会按英文密度明显低估",
+	)
+	_expect(
+		PromptBudgetScript.estimate_tokens(english_prompt) < english_prompt.length(),
+		"英文 Prompt 仍使用较低密度的保守粗估",
+	)
+	_expect(
+		PromptBudgetScript.estimate_tokens("角色 AI 123") > 0,
+		"中英混合 Prompt 可以得到稳定 Token 粗估",
+	)
+
 	if _failed == 0:
 		print("PROMPT_BUDGET_PASS")
 		quit(0)
