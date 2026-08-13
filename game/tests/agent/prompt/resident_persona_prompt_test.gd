@@ -112,6 +112,39 @@ func _initialize() -> void:
 	_expect(preview.contains("角色专属 Prompt（仅角色偏好）：保持谨慎"), "预览包含未保存 Prompt")
 	_expect(PromptBudgetScript.estimate_tokens(preview) > 0, "预览提供可用 Token 粗估")
 
+	var preview_resident_id := "resident-preview-clear-test"
+	store.call("remove_profile", preview_resident_id)
+	var preview_store_result := store.call(
+		"set_profile",
+		preview_resident_id,
+		{
+			"name": "旧名字",
+			"personality": "旧性格不应继续显示",
+			"goals": "旧目标不应继续显示",
+		},
+	) as Dictionary
+	_expect(bool(preview_store_result.get("ok", false)), "预览测试角色档案写入成功")
+	var cleared_preview := String(injector.call(
+		"build_preview",
+		preview_resident_id,
+		"",
+		{
+			"name": "新名字",
+			"personality": "",
+			"goals": "",
+		},
+	))
+	_expect(cleared_preview.contains("姓名：新名字"), "预览采用显式的新字段值")
+	_expect(
+		not cleared_preview.contains("旧性格不应继续显示"),
+		"预览中的空 personality 可以覆盖旧存档值",
+	)
+	_expect(
+		not cleared_preview.contains("旧目标不应继续显示"),
+		"预览中的空 goals 可以覆盖旧存档值",
+	)
+	store.call("remove_profile", preview_resident_id)
+
 	var provider := FakeProvider.new()
 	var execution: RefCounted = DecisionExecutionScript.new(
 		provider,
