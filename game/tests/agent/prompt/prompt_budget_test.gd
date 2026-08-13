@@ -60,8 +60,12 @@ func _initialize() -> void:
 		"记忆截断会留下明确标记",
 	)
 	_expect(
-		compiler.retry_feedback.length() <= PromptBudgetScript.RETRY_FEEDBACK_MAX_CHARS + 32,
-		"重试反馈不会无限增长",
+		compiler.retry_feedback.length() <= PromptBudgetScript.RETRY_FEEDBACK_MAX_CHARS,
+		"重试反馈严格保持在预算内",
+	)
+	_expect(
+		compiler.retry_feedback.contains("重试反馈因上下文预算已截断"),
+		"重试反馈截断会留下明确标记",
 	)
 
 	if _failed == 0:
