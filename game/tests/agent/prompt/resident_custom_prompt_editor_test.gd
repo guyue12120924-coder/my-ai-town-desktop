@@ -81,8 +81,7 @@ func _run() -> void:
 func _finish(page: Control, store: RefCounted) -> void:
 	store.call("remove_profile", TEST_RESIDENT_ID)
 	if is_instance_valid(page):
-		page.queue_free()
-	await process_frame
+		page.free()
 	if _failed == 0:
 		print("RESIDENT_CUSTOM_PROMPT_EDITOR_PASS")
 		quit(0)
