@@ -423,9 +423,9 @@ func _current_profile_override() -> Dictionary:
 
 
 func _copy_preview_field(target: Dictionary, field: String, value: Variant) -> void:
-	var text := String(value).strip_edges()
-	if not text.is_empty():
-		target[field] = text
+	# A cleared field is still an explicit preview override. Preserve empty text
+	# so the preview cannot silently resurrect an older stored persona value.
+	target[field] = String(value).strip_edges()
 
 
 func _save_prompt() -> void:
