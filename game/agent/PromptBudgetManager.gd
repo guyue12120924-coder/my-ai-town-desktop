@@ -58,11 +58,40 @@ static func trim_base_system_prompt(text: String) -> String:
 
 
 static func estimate_tokens(text: String) -> int:
-	# Deliberately conservative for mixed Chinese/English text. Tokenizers vary,
-	# so this is a UI/debug indicator and never a provider billing value.
+	# This is intentionally a conservative mixed-language UI estimate rather
+	# than a provider billing value. CJK characters are commonly much denser in
+	# token space than English text, so treating every two Unicode characters as
+	# one token can materially under-report Chinese resident Prompts.
 	if text.is_empty():
 		return 0
-	return int(ceil(float(text.length()) / 2.0))
+	var dense_characters := 0
+	var latin_like_characters := 0
+	for index: int in text.length():
+		var codepoint := text.unicode_at(index)
+		if _is_whitespace(codepoint):
+			continue
+		if _is_dense_token_character(codepoint):
+			dense_characters += 1
+		else:
+			latin_like_characters += 1
+	return dense_characters + int(ceil(float(latin_like_characters) / 3.0))
+
+
+static func _is_whitespace(codepoint: int) -> bool:
+	return codepoint in [9, 10, 13, 32, 0x3000]
+
+
+static func _is_dense_token_character(codepoint: int) -> bool:
+	return (
+		(codepoint >= 0x3000 and codepoint <= 0x303F)
+		or (codepoint >= 0x3040 and codepoint <= 0x30FF)
+		or (codepoint >= 0x3400 and codepoint <= 0x4DBF)
+		or (codepoint >= 0x4E00 and codepoint <= 0x9FFF)
+		or (codepoint >= 0xAC00 and codepoint <= 0xD7AF)
+		or (codepoint >= 0xF900 and codepoint <= 0xFAFF)
+		or (codepoint >= 0x1F000 and codepoint <= 0x1FAFF)
+		or (codepoint >= 0x20000 and codepoint <= 0x2FA1F)
+	)
 
 
 static func _trim_tail(text: String, maximum: int, marker: String) -> String:
